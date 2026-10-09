@@ -122,11 +122,11 @@
     { id: 'nova', name: 'NOVA', color: '#22d3ee', shape: 'triangle', role: 'Meme Momentum',
       rule: 'Buy strength: 1h > +3%, 5m green, buyers > 55% of txns and volume accelerating.',
       analyze(s) {
-        const lines = [`> Δ5m ${sg(s.chg.m5)} Δ1h ${sg(s.chg.h1)} Δ6h ${sg(s.chg.h6)}`, `> vol accel 1h/6h-avg = ${f2(s.volAccel)}x  ema Δ ${s.emaSpread == null ? '—' : sg(s.emaSpread, 2)}`];
+        const lines = [`> mcap ${usd(s.mc)}  Δ5m ${sg(s.chg.m5)} Δ1h ${sg(s.chg.h1)} Δ6h ${sg(s.chg.h6)}`, `> vol accel 1h/6h-avg = ${f2(s.volAccel)}x  ema Δ ${s.emaSpread == null ? '—' : sg(s.emaSpread, 2)}`];
         let side = 'WAIT', conv = 0, why;
-        if (s.chg.h1 > 3 && s.chg.m5 >= 0 && s.br1 > 0.55 && s.volAccel > 1.1) { side = 'BUY'; conv = clamp(0.35 + s.chg.h1 / 40 + (s.volAccel - 1) / 4 + (s.br1 - 0.55), 0, 1); why = `${sg(s.chg.h1)} in 1h, ${pct(s.br1)} of trades are buys and volume runs ${f2(s.volAccel)}x the 6h pace`; }
-        else if (s.chg.h1 < -6 && s.br1 < 0.45) { side = 'AVOID'; conv = clamp(0.4 - s.chg.h1 / 40, 0, 1); why = `trend broke: ${sg(s.chg.h1)} in 1h with sellers in control (${pct(1 - s.br1)} sells)`; }
-        else why = `no clean momentum (1h ${sg(s.chg.h1)}, 5m ${sg(s.chg.m5)}, vol ${f2(s.volAccel)}x)`;
+        if (s.chg.h1 > 3 && s.chg.m5 >= 0 && s.br1 > 0.55 && s.volAccel > 1.1) { side = 'BUY'; conv = clamp(0.35 + s.chg.h1 / 40 + (s.volAccel - 1) / 4 + (s.br1 - 0.55), 0, 1); why = `mcap ${usd(s.mc)} and ${sg(s.chg.h1)} in 1h, ${pct(s.br1)} of trades are buys and volume runs ${f2(s.volAccel)}x the 6h pace`; }
+        else if (s.chg.h1 < -6 && s.br1 < 0.45) { side = 'AVOID'; conv = clamp(0.4 - s.chg.h1 / 40, 0, 1); why = `trend broke at ${usd(s.mc)} mcap: ${sg(s.chg.h1)} in 1h with sellers in control (${pct(1 - s.br1)} sells)`; }
+        else why = `no clean momentum at ${usd(s.mc)} mcap (1h ${sg(s.chg.h1)}, 5m ${sg(s.chg.m5)}, vol ${f2(s.volAccel)}x)`;
         return { side, conv, why, lines };
       },
       say: { BUY: ['${C} is sending 🚀 {why}. Momentum entry on the radar.', 'Trend is your friend on ${C}: {why}.'], AVOID: ['${C} momentum is dead: {why}. Not touching it.', 'Nope on ${C}, {why}.'], WAIT: ['${C}: {why}. Waiting for a real breakout.', 'Flat energy on ${C}. {why}.'] } },
@@ -135,9 +135,9 @@
       analyze(s) {
         const lines = [`> rsi(14,1m)=${f1(s.rsi)}  Δ24h ${sg(s.chg.h24)}`, `> liquidity ${usd(s.liq)} (${s.liqMc == null ? '—' : f1(s.liqMc) + '% of mcap'})`];
         let side = 'WAIT', conv = 0, why;
-        if (s.chg.h24 < -15 && s.chg.h1 > -2 && (s.rsi == null || s.rsi < 45) && s.liq > 200000) { side = 'BUY'; conv = clamp(0.35 + (-s.chg.h24 - 15) / 60 + (s.rsi != null ? (45 - s.rsi) / 40 : 0), 0, 1); why = `flushed ${sg(s.chg.h24)} in 24h but stabilising (1h ${sg(s.chg.h1)}), RSI ${f1(s.rsi)}, liquidity still ${usd(s.liq)}`; }
-        else if ((s.rsi != null && s.rsi > 75) || s.chg.h1 > 25) { side = 'AVOID'; conv = clamp(0.4 + ((s.rsi || 70) - 70) / 30 + Math.max(0, s.chg.h1 - 20) / 50, 0, 1); why = `overextended: RSI ${f1(s.rsi)}, ${sg(s.chg.h1)} in 1h. Chasing here is how bags are made`; }
-        else why = `no dip to buy (24h ${sg(s.chg.h24)}, RSI ${f1(s.rsi)})`;
+        if (s.chg.h24 < -15 && s.chg.h1 > -2 && (s.rsi == null || s.rsi < 45) && s.liq > 200000) { side = 'BUY'; conv = clamp(0.35 + (-s.chg.h24 - 15) / 60 + (s.rsi != null ? (45 - s.rsi) / 40 : 0), 0, 1); why = `flushed ${sg(s.chg.h24)} in 24h to ${usd(s.mc)} mcap but stabilising (1h ${sg(s.chg.h1)}), RSI ${f1(s.rsi)}, liquidity still ${usd(s.liq)}`; }
+        else if ((s.rsi != null && s.rsi > 75) || s.chg.h1 > 25) { side = 'AVOID'; conv = clamp(0.4 + ((s.rsi || 70) - 70) / 30 + Math.max(0, s.chg.h1 - 20) / 50, 0, 1); why = `overextended at ${usd(s.mc)} mcap: RSI ${f1(s.rsi)}, ${sg(s.chg.h1)} in 1h. Chasing here is how bags are made`; }
+        else why = `no dip to buy at ${usd(s.mc)} mcap (24h ${sg(s.chg.h24)}, RSI ${f1(s.rsi)})`;
         return { side, conv, why, lines };
       },
       say: { BUY: ['Blood on ${C} 🌙 {why}. Nibble zone, small size.', '${C} got nuked and is holding: {why}.'], AVOID: ['${C} is too hot for me: {why}.', 'Let ${C} cool off, {why}.'], WAIT: ['${C}: {why}. Patience.', 'Nothing to catch on ${C}, {why}.'] } },
@@ -145,33 +145,33 @@
       rule: 'Risk score from liquidity, liq/mcap, age, FDV, sell pressure & copycats. HIGH+ = veto.',
       analyze(s) {
         const r = s.risk;
-        const lines = [`> risk score ${r.score}/100 → ${r.level}`, `> flags: ${r.why.slice(0, 3).join(', ') || 'none'}`, `> age ${s.ageDays == null ? '—' : f1(s.ageDays) + 'd'}  liq ${usd(s.liq)}`];
+        const lines = [`> risk score ${r.score}/100 → ${r.level}`, `> flags: ${r.why.slice(0, 3).join(', ') || 'none'}`, `> mcap ${usd(s.mc)}  liq ${usd(s.liq)}  age ${s.ageDays == null ? '—' : f1(s.ageDays) + 'd'}`];
         let risk = r.level === 'LOW' ? 'OK' : r.level === 'MED' ? 'CAUTION' : 'VETO';
         if (s.liq < 75000) risk = 'VETO';
-        const why = risk === 'OK' ? `risk ${r.score}/100 (${r.level}), liquidity ${usd(s.liq)}${r.why.length ? ', watch: ' + r.why[0] : ''}` : `risk ${r.score}/100 (${r.level}): ${r.why.slice(0, 3).join(', ')}`;
+        const why = risk === 'OK' ? `risk ${r.score}/100 (${r.level}), ${usd(s.mc)} mcap with ${usd(s.liq)} liquidity${r.why.length ? ', watch: ' + r.why[0] : ''}` : `risk ${r.score}/100 (${r.level}): ${r.why.slice(0, 3).join(', ')}`;
         return { side: 'WAIT', conv: 0, risk, why, lines };
       },
       say: { OK: ['Rug check ${C}: {why}. Acceptable for a tiny paper size ✅', '${C} passes my checks: {why}. Still a memecoin, size like it can go to zero.'], CAUTION: ['Careful with ${C} ⚠️ {why}. Half size, hard stop.', '${C}: {why}. I only sign off with a tight stop.'], VETO: ['VETO ${C} ⛔ {why}.', 'Hard no on ${C}: {why}. That\'s how people get rugged.'] } },
     { id: 'echo', name: 'ECHO', color: '#4ade80', shape: 'hexagon', role: 'Degen Flow',
       rule: 'Follow the crowd: buy ratio 5m/1h > 60%, txn count surging, boosts and socials.',
       analyze(s) {
-        const lines = [`> buys/sells 5m ${pct(s.br5)} · 1h ${pct(s.br1)} · 24h ${pct(s.br24)}`, `> txns 1h ${s.tx1} (${f2(s.txAccel)}x 6h pace)  boosts ${s.boosts || 0}`];
+        const lines = [`> mcap ${usd(s.mc)} · buys/sells 5m ${pct(s.br5)} · 1h ${pct(s.br1)} · 24h ${pct(s.br24)}`, `> txns 1h ${s.tx1} (${f2(s.txAccel)}x 6h pace)  boosts ${s.boosts || 0}`];
         let side = 'WAIT', conv = 0, why;
         if (s.br1 > 0.58 && s.br5 >= 0.5 && s.txAccel > 1.15) { side = 'BUY'; conv = clamp(0.3 + (s.br1 - 0.55) * 2 + (s.txAccel - 1) / 3 + (s.boosts ? 0.1 : 0), 0, 1); why = `${pct(s.br1)} buys in the last hour and txns running ${f2(s.txAccel)}x normal${s.boosts ? `, ${s.boosts} active boosts` : ''}`; }
         else if (s.br1 < 0.42 && s.tx1 > 30) { side = 'AVOID'; conv = clamp(0.3 + (0.45 - s.br1) * 2, 0, 1); why = `sellers dominate: only ${pct(s.br1)} of ${s.tx1} txns in 1h are buys`; }
-        else why = `crowd is lukewarm (${pct(s.br1)} buys 1h, txns ${f2(s.txAccel)}x)`;
+        else why = `crowd is lukewarm at ${usd(s.mc)} mcap (${pct(s.br1)} buys 1h, txns ${f2(s.txAccel)}x)`;
         return { side, conv, why, lines };
       },
       say: { BUY: ['The degens are piling into ${C} 📡 {why}.', 'CT is gonna notice ${C} soon: {why}.'], AVOID: ['${C} chat is dumping: {why} 📉', 'Exit liquidity alert on ${C}: {why}.'], WAIT: ['${C} vibes are mid: {why}.', 'Listening to ${C} flow… {why}.'] } },
     { id: 'vex', name: 'VEX', color: '#fb7185', shape: 'diamond', role: 'Contrarian',
       rule: 'Fade euphoria (>+60% 24h or 70% buys after a pump); buy despair only if liquidity survived.',
       analyze(s, consensus) {
-        const lines = [`> 24h ${sg(s.chg.h24)}  buys ${pct(s.br24)}  crowd: ${s.br1 > 0.65 ? 'euphoric' : s.br1 < 0.4 ? 'panicking' : 'meh'}`];
+        const lines = [`> mcap ${usd(s.mc)}  24h ${sg(s.chg.h24)}  buys ${pct(s.br24)}  crowd: ${s.br1 > 0.65 ? 'euphoric' : s.br1 < 0.4 ? 'panicking' : 'meh'}`];
         let side = 'WAIT', conv = 0, why;
-        if (s.chg.h24 > 60 || (s.br1 > 0.7 && s.chg.h1 > 15)) { side = 'AVOID'; conv = clamp(0.4 + s.chg.h24 / 300, 0, 1); why = `${sg(s.chg.h24)} in 24h with ${pct(s.br1)} buys: late buyers are the exit liquidity`; }
-        else if (s.chg.h24 < -35 && s.liq > 300000 && s.chg.h1 >= 0) { side = 'BUY'; conv = clamp(0.35 + (-s.chg.h24 - 35) / 80, 0, 1); why = `down ${sg(s.chg.h24)} and everyone gave up, but liquidity (${usd(s.liq)}) is still there`; }
+        if (s.chg.h24 > 60 || (s.br1 > 0.7 && s.chg.h1 > 15)) { side = 'AVOID'; conv = clamp(0.4 + s.chg.h24 / 300, 0, 1); why = `${sg(s.chg.h24)} in 24h to ${usd(s.mc)} mcap with ${pct(s.br1)} buys: late buyers are the exit liquidity`; }
+        else if (s.chg.h24 < -35 && s.liq > 300000 && s.chg.h1 >= 0) { side = 'BUY'; conv = clamp(0.35 + (-s.chg.h24 - 35) / 80, 0, 1); why = `down ${sg(s.chg.h24)} to ${usd(s.mc)} mcap and everyone gave up, but liquidity (${usd(s.liq)}) is still there`; }
         else if (consensus && consensus.side === 'BUY' && consensus.count >= 2) { side = 'AVOID'; conv = 0.25; why = `${consensus.count} of you want to buy. In memeland that's usually the top signal`; }
-        else why = `no crowd to fade on this one`;
+        else why = `no crowd to fade at ${usd(s.mc)} mcap`;
         lines.push(`> contrarian: ${side}`);
         return { side, conv, why, lines };
       },

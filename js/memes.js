@@ -11,6 +11,12 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = a => a[Math.floor(Math.random() * a.length)];
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // ---- market-cap helpers: implied supply = marketCap (or FDV) / priceUsd from DexScreener ----
+  const supOf = t => { const mc = t && (t.mc || t.fdv); return (mc && t.price) ? mc / t.price : null; };
+  const capKind = t => t.mc ? 'MC' : t.fdv ? 'FDV' : 'PRICE';
+  const MCv = (sup, p) => sup ? ME.usd(p * sup) : ME.px(p);         // display market cap for a price
+  const MC = (t, p = t.price) => MCv(supOf(t), p);
+  const axisMc = v => { const a = Math.abs(v); return a >= 1e9 ? '$' + (v / 1e9).toFixed(3) + 'B' : a >= 1e6 ? '$' + (v / 1e6).toFixed(3) + 'M' : a >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + v.toFixed(2); };
   const hhmmss = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
   const T0 = Date.now();
   const SEEDS = ['BANANAS31', '币安人生', 'Mubarak', 'KOMA', 'FLOKI', 'GIGGLE', 'BabyDoge', 'Broccoli', 'TUT', 'Simons Cat', 'Cheems', 'TST', 'SIREN', 'PALU', 'Wojak', 'PUP', 'CZ dog', 'Binance Life', 'BNB meme', 'bsc meme', 'four.meme', 'doge bsc', 'pepe bsc', 'inu bsc', 'frog bsc', 'cat bsc', 'pump bsc', 'meme coin wbnb', 'dog wbnb', 'ai meme bsc', 'shib bsc', 'elon bsc', 'trump bsc', 'baby bsc', 'panda bsc', 'monkey bsc', 'hippo bsc', 'chill bsc', 'bull bsc', 'meme usdt bsc'];
@@ -182,16 +188,17 @@
     const nowMin = Math.floor(Date.now() / 60000) * 60;
     if (t.price) { if (last.time === nowMin) { last.close = t.price; last.high = Math.max(last.high, t.price); last.low = Math.min(last.low, t.price); } else if (nowMin > last.time) c.push({ time: nowMin, open: last.close, high: Math.max(last.close, t.price), low: Math.min(last.close, t.price), close: t.price, volume: 0 }); }
     try {
-      const f = scaleOf(t.price); desk.f = f;
-      desk.chart.applyOptions({ localization: { priceFormatter: v => ME.px(v / f), timeFormatter: chartBase.localization.timeFormatter } });
+      const k = supOf(t) || 1, fmtAx = supOf(t) ? axisMc : ME.px;
+      const f = scaleOf(t.price * k); desk.f = f;
+      desk.chart.applyOptions({ localization: { priceFormatter: v => fmtAx(v / f), timeFormatter: chartBase.localization.timeFormatter } });
       desk.candle.applyOptions({ priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } });
-      desk.candle.setData(c.map(b => ({ time: b.time, open: b.open * f, high: b.high * f, low: b.low * f, close: b.close * f })));
+      desk.candle.setData(c.map(b => ({ time: b.time, open: b.open * k * f, high: b.high * k * f, low: b.low * k * f, close: b.close * k * f })));
       desk.vol.setData(c.map(b => ({ time: b.time, value: isFinite(b.volume) ? b.volume : 0, color: b.close >= b.open ? 'rgba(43,245,160,.35)' : 'rgba(255,77,109,.35)' })));
       desk.lines.forEach(l => desk.candle.removePriceLine(l)); desk.lines = [];
       ideas.filter(i => i.addr === t.addr && i.status === 'OPEN').slice(0, 1).forEach(i => {
-        desk.lines.push(desk.candle.createPriceLine({ price: i.entry * f, color: '#e2e8f0', lineStyle: 2, lineWidth: 1, title: 'idea entry' }));
-        desk.lines.push(desk.candle.createPriceLine({ price: i.stop * f, color: '#ff4d6d', lineStyle: 2, lineWidth: 1, title: 'stop' }));
-        desk.lines.push(desk.candle.createPriceLine({ price: i.target * f, color: '#2bf5a0', lineStyle: 2, lineWidth: 1, title: 'target' }));
+        desk.lines.push(desk.candle.createPriceLine({ price: i.entry * k * f, color: '#e2e8f0', lineStyle: 2, lineWidth: 1, title: 'idea entry mcap' }));
+        desk.lines.push(desk.candle.createPriceLine({ price: i.stop * k * f, color: '#ff4d6d', lineStyle: 2, lineWidth: 1, title: 'stop mcap' }));
+        desk.lines.push(desk.candle.createPriceLine({ price: i.target * k * f, color: '#2bf5a0', lineStyle: 2, lineWidth: 1, title: 'target mcap' }));
       });
       if (full) desk.chart.timeScale().fitContent();
     } catch (e) { }
@@ -233,11 +240,12 @@
     const data = clean(wallData(t)); if (!data.length) return;
     try {
       const col = (t.sig && t.sig.chg.h1 >= 0) ? '#2bf5a0' : '#ff4d6d';
-      const f = (wc.addr === addr && wc.f) ? wc.f : scaleOf(t.price);
-      const sd = data.map(d => ({ time: d.time, value: d.value * f }));
+      const k = supOf(t) || 1, fmtAx = supOf(t) ? axisMc : ME.px;
+      const f = (wc.addr === addr && wc.f) ? wc.f : scaleOf(t.price * k);
+      const sd = data.map(d => ({ time: d.time, value: d.value * k * f }));
       if (full || wc.addr !== addr || data[data.length - 1].time < wc.lastT) {
         wc.f = f;
-        wc.chart.applyOptions({ localization: { priceFormatter: v => ME.px(v / f), timeFormatter: chartBase.localization.timeFormatter } });
+        wc.chart.applyOptions({ localization: { priceFormatter: v => fmtAx(v / f), timeFormatter: chartBase.localization.timeFormatter } });
         wc.series.applyOptions({ priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, lineColor: col, topColor: col + '44', bottomColor: col + '00' });
         wc.series.setData(sd); wc.chart.timeScale().fitContent(); wc.addr = addr;
       } else wc.series.update(sd[sd.length - 1]);
@@ -249,7 +257,7 @@
       const t = T.get(a); if (!t) return;
       const s = t.sig;
       const ws = document.getElementById('ws-' + i); const html = `${icon(t)}<span>$${esc(t.symbol)}</span><small>${t.candles && t.candles.length ? '1m · live' : '24h path · live'}</small>`; if (ws.dataset.a !== a + !!(t.candles && t.candles.length)) { ws.innerHTML = html; ws.dataset.a = a + !!(t.candles && t.candles.length); }
-      const wp = document.getElementById('wp-' + i); wp.textContent = ME.px(t.price); wp.className = 'px ' + (t.flash === 'u' ? 'up' : t.flash === 'd' ? 'dn' : '');
+      const wp = document.getElementById('wp-' + i); wp.textContent = capKind(t) + ' ' + MC(t); wp.className = 'px ' + (t.flash === 'u' ? 'up' : t.flash === 'd' ? 'dn' : '');
       const wc = document.getElementById('wc-' + i); wc.innerHTML = `1h <span class="${cls(t.chg.h1)}">${ME.sg(t.chg.h1)}</span> · 24h <span class="${cls(t.chg.h24)}">${ME.sg(t.chg.h24)}</span>`;
       document.getElementById('wb-' + i).innerHTML = `buys ${ME.pct(s.br1)}<span class="bp"><i style="width:${Math.round(s.br1 * 100)}%"></i></span>`;
       const r = document.getElementById('wr-' + i); const rs = s.rsi == null ? 50 : s.rsi; r.style.width = rs + '%'; r.style.background = rs > 70 ? 'var(--dn)' : rs < 30 ? 'var(--up)' : 'linear-gradient(90deg,#f0b90b,#ff8a00)';
@@ -285,7 +293,7 @@
       const f = $('#dexFrame');
       f.classList.add('fade');
       f.onload = () => f.classList.remove('fade');
-      f.src = `https://dexscreener.com/bsc/${t.pair}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=dark&theme=dark&chartStyle=1&chartType=usd&interval=5`;
+      f.src = `https://dexscreener.com/bsc/${t.pair}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=dark&theme=dark&chartStyle=1&chartType=marketCap&interval=5`;
       setTimeout(() => f.classList.remove('fade'), 4000);
       $('#dsLink').href = t.url || `https://dexscreener.com/bsc/${t.pair}`;
       needCandles(addr, false, true);
@@ -316,11 +324,11 @@
   function updateFocusHead() {
     const t = T.get(focusAddr); if (!t) return;
     $('#focusSym').textContent = '$' + t.symbol; $('#focusName').textContent = t.name;
-    const px = $('#focusPx'); px.textContent = ME.px(t.price); px.className = 'px ' + (t.flash === 'u' ? 'up' : t.flash === 'd' ? 'dn' : '');
+    const px = $('#focusPx'); px.textContent = capKind(t) + ' ' + MC(t); px.className = 'px ' + (t.flash === 'u' ? 'up' : t.flash === 'd' ? 'dn' : '');
     const c = $('#focusChg'); c.textContent = ME.sg(t.chg.h24) + ' 24h'; c.className = 'chg ' + (t.chg.h24 >= 0 ? 'bg-up' : 'bg-dn');
     const s = t.sig; if (!s) return;
     $('#focusRisk').innerHTML = rbadge(s.risk);
-    $('#focusChips').innerHTML = [['LIQ', ME.usd(t.liq)], ['MCAP', ME.usd(t.mc || t.fdv)], ['BUYS 1H', ME.pct(s.br1)], ['TX 1H', s.tx1], ['RSI', ME.f1(s.rsi)], ['AGE', ME.age(t.created)]].map(c => `<span class="chip">${c[0]} <b>${c[1]}</b></span>`).join('');
+    $('#focusChips').innerHTML = [['LIQ', ME.usd(t.liq)], ['PRICE', ME.px(t.price)], ['FDV', ME.usd(t.fdv)], ['BUYS 1H', ME.pct(s.br1)], ['TX 1H', s.tx1], ['RSI', ME.f1(s.rsi)], ['AGE', ME.age(t.created)]].map(c => `<span class="chip">${c[0]} <b>${c[1]}</b></span>`).join('');
   }
   document.querySelectorAll('#viewSwitch button').forEach(b => b.onclick = () => {
     view = b.dataset.v; document.querySelectorAll('#viewSwitch button').forEach(x => x.classList.toggle('on', x === b));
@@ -330,8 +338,8 @@
 
   // ---------- ranking table ----------
   let sortK = 'vol', sortDir = -1;
-  const SORTERS = { symbol: t => t.symbol.toLowerCase(), price: t => t.price, m5: t => t.chg.m5, h1: t => t.chg.h1, h6: t => t.chg.h6, h24: t => t.chg.h24, vol: t => t.vol.h24, liq: t => t.liq, mc: t => t.mc || t.fdv || 0, tx: t => t.txns.h24.buys + t.txns.h24.sells, age: t => -(t.created || 0), risk: t => t.sig ? t.sig.risk.score : 0 };
-  const SORT_LBL = { symbol: 'name', price: 'price', m5: '5m change', h1: '1h change', h6: '6h change', h24: '24h change', vol: '24h volume', liq: 'liquidity', mc: 'market cap', tx: '24h txns', age: 'age', risk: 'risk score' };
+  const SORTERS = { symbol: t => t.symbol.toLowerCase(), price: t => t.price, fdv: t => t.fdv || 0, m5: t => t.chg.m5, h1: t => t.chg.h1, h6: t => t.chg.h6, h24: t => t.chg.h24, vol: t => t.vol.h24, liq: t => t.liq, mc: t => t.mc || t.fdv || 0, tx: t => t.txns.h24.buys + t.txns.h24.sells, age: t => -(t.created || 0), risk: t => t.sig ? t.sig.risk.score : 0 };
+  const SORT_LBL = { symbol: 'name', price: 'price', fdv: 'FDV', m5: '5m change', h1: '1h change', h6: '6h change', h24: '24h change', vol: '24h volume', liq: 'liquidity', mc: 'market cap', tx: '24h txns', age: 'age', risk: 'risk score' };
   document.querySelectorAll('.mtable th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; if (sortK === k) sortDir *= -1; else { sortK = k; sortDir = k === 'symbol' ? 1 : -1; } renderTable(); });
   function ranked() { const f = SORTERS[sortK]; return tracked.map(a => T.get(a)).filter(Boolean).sort((a, b) => { const x = f(a), y = f(b); return (x > y ? 1 : x < y ? -1 : 0) * sortDir; }); }
   function renderTable() {
@@ -346,10 +354,10 @@
       return `<tr data-a="${t.addr.toLowerCase()}" class="${t.addr.toLowerCase() === focusAddr ? 'focus' : ''}">
         <td class="rk ${i < 3 ? 'top' : ''}">${i + 1}</td>
         <td><div class="tkn">${icon(t)}<div><b>$${esc(t.symbol)}</b>${t.boosts ? `<span class="boost" title="active DexScreener boosts">⚡${t.boosts}</span>` : ''}<span class="sub2"><small>${esc(t.name)}</small> · ${esc(t.dex)}</span></div></div></td>
-        <td class="r ${t.flash === 'u' ? 'fu' : t.flash === 'd' ? 'fd' : ''}">${ME.px(t.price)}</td>
+        <td class="r ${t.flash === 'u' ? 'fu' : t.flash === 'd' ? 'fd' : ''}"><b>${MC(t)}</b><span class="sub2">${t.mc ? 'mcap' : t.fdv ? 'FDV (no MC)' : 'price'} · ${ME.px(t.price)}</span></td>
         ${ch(t.chg.m5)}${ch(t.chg.h1)}${ch(t.chg.h6)}${ch(t.chg.h24)}
         <td class="r">${ME.usd(t.vol.h24)}</td><td class="r">${ME.usd(t.liq)}</td>
-        <td class="r">${ME.usd(t.mc)}<span class="sub2">FDV ${ME.usd(t.fdv)}</span></td>
+        <td class="r">${ME.usd(t.fdv)}<span class="sub2">price ${ME.px(t.price)}</span></td>
         <td><div class="txbar"><span class="bar"><i style="width:${Math.round(br * 100)}%"></i></span><span><span class="up">${tb.toLocaleString('en-US')}</span>/<span class="dn">${ts.toLocaleString('en-US')}</span></span></div></td>
         <td class="r">${ME.age(t.created)}</td>
         <td>${s ? rbadge(s.risk) : ''}</td>
@@ -366,10 +374,10 @@
     const tot = ts.reduce((a, t) => a + t.vol.h24, 0); $('#sVol').textContent = ME.usd(tot);
     const by = f => ts.slice().sort((a, b) => f(b) - f(a));
     const g = by(t => t.chg.h1)[0], l = by(t => -t.chg.h1)[0], b = by(t => t.txns.h1.buys + t.txns.h1.sells > 20 ? t.sig.br1 : 0)[0], y = by(t => t.created || 0)[0];
-    $('#sGain').innerHTML = `$${esc(g.symbol)} <span class="${cls(g.chg.h1)}">${ME.sg(g.chg.h1)}</span>`;
-    $('#sLose').innerHTML = `$${esc(l.symbol)} <span class="${cls(l.chg.h1)}">${ME.sg(l.chg.h1)}</span>`;
+    $('#sGain').innerHTML = `$${esc(g.symbol)} <span class="${cls(g.chg.h1)}">${ME.sg(g.chg.h1)}</span> <small>${MC(g)}</small>`;
+    $('#sLose').innerHTML = `$${esc(l.symbol)} <span class="${cls(l.chg.h1)}">${ME.sg(l.chg.h1)}</span> <small>${MC(l)}</small>`;
     $('#sBuy').innerHTML = `$${esc(b.symbol)} <small>${ME.pct(b.sig.br1)} buys 1h</small>`;
-    $('#sYoung').innerHTML = `$${esc(y.symbol)} <small>${ME.age(y.created)} old</small>`;
+    $('#sYoung').innerHTML = `$${esc(y.symbol)} <small>${ME.age(y.created)} · ${MC(y)}</small>`;
     const mix = { LOW: 0, MED: 0, HIGH: 0, EXTREME: 0 }; ts.forEach(t => mix[t.sig.risk.level]++);
     $('#sRisk').innerHTML = `<span class="up">${mix.LOW}</span>·<span class="warn">${mix.MED}</span>·<span style="color:#fb923c">${mix.HIGH}</span>·<span class="dn">${mix.EXTREME}</span> <small>L/M/H/X</small>`;
     const ago = Math.round((Date.now() - lastRefresh) / 1000); const hr = $('#hRefresh'); hr.textContent = lastRefresh ? ago + 's ago' : 'loading…'; hr.className = ago < 30 ? 'ok' : 'warn';
@@ -444,8 +452,8 @@
   const paper = [], closed = []; const NOTIONAL = 1000;
   function openPaper(id, t, s) {
     if (paper.some(p => p.bot === id && p.addr === t.addr) || paper.filter(p => p.bot === id).length >= 2) return;
-    const st = ME.stops(s); const p = { bot: id, addr: t.addr, sym: t.symbol, entry: t.price, stop: st.stop, target: st.target, opened: Date.now(), isNew: true };
-    paper.push(p); termPush(id, `> paper buy $${t.symbol} @ ${ME.px(t.price)} (sim, $1K)`, 'cmd'); log('PAPER', `${BOT[id].name} paper-buys $${t.symbol} @ ${ME.px(t.price)}`, BOT[id].color);
+    const st = ME.stops(s); const p = { sup: supOf(t), bot: id, addr: t.addr, sym: t.symbol, entry: t.price, stop: st.stop, target: st.target, opened: Date.now(), isNew: true };
+    paper.push(p); termPush(id, `> paper buy $${t.symbol} at ${MC(t)} mcap (sim, $1K)`, 'cmd'); log('PAPER', `${BOT[id].name} paper-buys $${t.symbol} at ${MC(t)} mcap`, BOT[id].color);
   }
   function renderPaper() {
     for (const p of paper.slice()) {
@@ -457,7 +465,7 @@
     }
     $('#paperBody').innerHTML = paper.length ? paper.map(p => {
       const t = T.get(p.addr.toLowerCase()), r = ME.pnl(p, t.price), b = BOT[p.bot];
-      const h = `<tr class="${p.isNew ? 'new' : ''}"><td><span class="bn">${avatar(b)}<span style="color:${b.color}">${b.name}</span></span></td><td><b>$${esc(p.sym)}</b></td><td>${ME.px(p.entry)}</td><td>${ME.px(t.price)}</td><td class="${cls(r)}">${ME.sg(r, 2)}<br><small>${r >= 0 ? '+' : '-'}$${Math.abs(r / 100 * NOTIONAL).toFixed(2)}</small></td></tr>`;
+      const h = `<tr class="${p.isNew ? 'new' : ''}"><td><span class="bn">${avatar(b)}<span style="color:${b.color}">${b.name}</span></span></td><td><b>$${esc(p.sym)}</b></td><td>${MCv(p.sup, p.entry)}</td><td>${MCv(p.sup, t.price)}</td><td class="${cls(r)}">${ME.sg(r, 2)}<br><small>${r >= 0 ? '+' : '-'}$${Math.abs(r / 100 * NOTIONAL).toFixed(2)}</small></td></tr>`;
       p.isNew = false; return h;
     }).join('') : '<tr class="ph"><td colspan="5">no open paper bags</td></tr>';
     $('#paperClosed').innerHTML = closed.length ? closed.slice(0, 12).map(c => `<span><span style="color:${BOT[c.bot].color}">${BOT[c.bot].name}</span> $${esc(c.sym)} <b class="${cls(c.pnl)}">${ME.sg(c.pnl)}</b></span>`).join('') : '—';
@@ -473,10 +481,10 @@
     const reasons = i.reasons.map(r => `<li>${avatar(BOT[r.bot])}<span><b style="color:${BOT[r.bot].color}">${BOT[r.bot].name}:</b> ${esc(r.why)}</span></li>`).join('') + i.dissent.map(r => `<li class="dis">${avatar(BOT[r.bot])}<span><b style="color:${BOT[r.bot].color}">${BOT[r.bot].name} disagrees:</b> ${esc(r.why)}</span></li>`).join('');
     const c = el('div', 'idea L'); c.id = 'idea-' + i.id.replace(/[^a-z0-9]/gi, '');
     c.innerHTML = `<div class="ih">${icon(t)}<span class="coin" style="color:var(--bnb)">$${esc(i.sym)}</span><span class="side-pill L">▲ PAPER BUY</span>${rbadge(i.risk)}<span class="conf ${i.confidence}">CONFIDENCE<b>${i.confidence}</b></span></div>
-      <div class="levels"><div><label>ENTRY</label><b>${ME.px(i.entry)}</b></div><div><label>STOP</label><b class="dn">${ME.px(i.stop)}</b></div><div><label>TARGET</label><b class="up">${ME.px(i.target)}</b></div><div><label>R:R</label><b>1:2</b></div></div>
+      <div class="levels"><div><label>ENTRY MCAP</label><b>${MCv(i.sup, i.entry)}</b></div><div><label>STOP MCAP</label><b class="dn">${MCv(i.sup, i.stop)}</b></div><div><label>TARGET MCAP</label><b class="up">${MCv(i.sup, i.target)}</b></div><div><label>R:R</label><b>1:2</b></div></div>
       <div class="prog"><span class="entry"></span><span class="now" data-r="now"></span></div>
       <div class="prog-l"><span>STOP −${i.stopPct.toFixed(1)}%</span><span>ENTRY</span><span>TARGET +${(i.stopPct * 2).toFixed(1)}%</span></div>
-      <div class="live-pnl"><span>since idea · <span data-r="age">0s</span> · now <b data-r="px" style="font-size:11px">${ME.px(i.entry)}</b></span><b data-r="pnl">+0.00%</b></div>
+      <div class="live-pnl"><span>since idea · <span data-r="age">0s</span> · now <b data-r="px" style="font-size:11px">${MCv(i.sup, i.entry)}</b> mcap</span><b data-r="pnl">+0.00%</b></div>
       <ul class="reasons">${reasons}</ul>
       <div class="agree-row">AGREED ${i.agree.map(id => `<span title="${BOT[id].name}">${avatar(BOT[id])}</span>`).join('')}${i.atlas === 'CAUTION' ? '<span class="warn" style="margin-left:auto">⚠ ATLAS: half size</span>' : ''}</div>
       <div class="warn-line">☠ Memecoin risk: ${esc(i.risk.why.slice(0, 3).join(', ') || 'can go to zero')}. Liquidity ${ME.usd(t.liq)}. Paper idea only, not financial advice. Verify the contract (${i.addr.slice(0, 6)}…${i.addr.slice(-4)}) yourself.</div>`;
@@ -489,7 +497,7 @@
       if (!c) continue;
       const r = i.status === 'OPEN' ? ME.pnl(i, t.price) : i.final; const q = k => c.querySelector(`[data-r="${k}"]`);
       q('pnl').textContent = ME.sg(r, 2); q('pnl').className = cls(r);
-      if (i.status === 'OPEN') { q('px').textContent = ME.px(t.price); q('now').style.left = Math.max(0, Math.min(1, (t.price - i.stop) / (i.target - i.stop))) * 100 + '%'; const a = Math.floor((Date.now() - i.created) / 1000); q('age').textContent = a < 60 ? a + 's' : Math.floor(a / 60) + 'm ' + (a % 60) + 's'; }
+      if (i.status === 'OPEN') { q('px').textContent = MCv(i.sup, t.price); q('now').style.left = Math.max(0, Math.min(1, (t.price - i.stop) / (i.target - i.stop))) * 100 + '%'; const a = Math.floor((Date.now() - i.created) / 1000); q('age').textContent = a < 60 ? a + 's' : Math.floor(a / 60) + 'm ' + (a % 60) + 's'; }
     }
   }
 
@@ -511,7 +519,7 @@
     const bot = BOTS[(cycle - 1) % BOTS.length]; setActive(bot.id);
     stage(0, `<b style="color:${bot.color}">${bot.name}</b> scanning ${tracked.length} BSC memes`);
     termPush(bot.id, `> GET dexscreener /tokens/v1/bsc [${tracked.length}]`, 'cmd');
-    const top3 = ranked().slice(0, 3); for (const t of top3) { termPush(bot.id, `  $${t.symbol.slice(0, 8).padEnd(8)} 1h ${ME.sg(t.chg.h1)} liq ${ME.usd(t.liq)}`); await sleep(160); }
+    const top3 = ranked().slice(0, 3); for (const t of top3) { termPush(bot.id, `  $${t.symbol.slice(0, 8).padEnd(8)} mc ${MC(t)} 1h ${ME.sg(t.chg.h1)}`); await sleep(160); }
     let t = chooseToken(bot);
     if (pendingAddr && T.get(pendingAddr)) { t = T.get(pendingAddr); pendingAddr = null; termPush(bot.id, `> user request: inspect $${t.symbol}`, 'cmd'); }
     if (!t) return;
@@ -525,7 +533,8 @@
     if (Date.now() > pinnedUntil) { $('#pinNote').classList.remove('show'); setFocus(addr, bot); }
     log('OPEN', `${bot.name} opened $${t.symbol} chart (${t.pair.slice(0, 8)}…)`, bot.color);
     termPush(bot.id, `> open dexscreener.com/bsc/${t.pair.slice(0, 10)}…`, 'cmd'); await sleep(400);
-    termPush(bot.id, `> GET geckoterminal ohlcv 1m [${t.candles ? t.candles.length : 'queued'}]`, 'cmd'); await sleep(400);
+    termPush(bot.id, `> GET geckoterminal ohlcv 1m [${t.candles ? t.candles.length : 'queued'}] → plot as mcap`, 'cmd'); await sleep(250);
+    termPush(bot.id, `> mcap ${MC(t)} (${capKind(t)}) · liq ${ME.usd(t.liq)} · vol24 ${ME.usd(t.vol.h24)}`, 'res'); await sleep(400);
     const s = ME.signals(t, t.candles, [...T.values()]); t.sig = s;
     const v = ME.evaluateAll(s);
     for (const l of v[bot.id].lines) { termPush(bot.id, l, 'res'); await sleep(380); }
@@ -548,14 +557,14 @@
     stage(3, `rug check <b>$${esc(t.symbol)}</b> · risk ${s.risk.score}/100 ${s.risk.level} · ATLAS ${v.atlas.risk}`);
     await sleep(700);
     if (v.atlas.risk !== 'VETO') for (const id of ['nova', 'luna', 'echo', 'vex']) if (v[id].side === 'BUY' && v[id].conv >= .5) openPaper(id, t, s);
-    const idea = ME.buildIdea(t, s, v, Date.now());
+    const idea = ME.buildIdea(t, s, v, Date.now()); if (idea) idea.sup = supOf(t);
     if (idea && !ideas.some(i => i.addr === t.addr && i.status === 'OPEN') && Date.now() - lastIdeaAt > 45000) {
       lastIdeaAt = Date.now(); const pres = idea.agree.includes(bot.id) && bot.id !== 'atlas' ? bot.id : idea.agree[0];
       await typing(pres, 1500);
-      post(pres, `📌 Meme idea (PAPER): buy $${t.symbol} @ ${ME.px(idea.entry)}, stop ${ME.px(idea.stop)} (−${idea.stopPct.toFixed(1)}%), target ${ME.px(idea.target)}. Agreed: ${idea.agree.map(i => BOT[i].name).join(', ')}. Risk ${idea.risk.level}. Could go to zero. Not advice.`, { idea: true });
+      post(pres, `📌 Meme idea (PAPER): buy $${t.symbol} at ${MCv(idea.sup, idea.entry)} mcap, stop ${MCv(idea.sup, idea.stop)} mcap (−${idea.stopPct.toFixed(1)}%), target ${MCv(idea.sup, idea.target)} mcap. Agreed: ${idea.agree.map(i => BOT[i].name).join(', ')}. Risk ${idea.risk.level}. Could go to zero. Not advice.`, { idea: true });
       addIdea(idea); stage(4, `<b style="color:var(--am)">PAPER IDEA</b> · $${esc(t.symbol)} · risk ${idea.risk.level}`);
-      log('IDEA', `paper buy $${t.symbol} @ ${ME.px(idea.entry)} · ${idea.confidence}`, '#fbbf24');
-      toast(`<b style="color:var(--am)">✦ Meme idea:</b> <span class="up">BUY</span> <b>$${esc(t.symbol)}</b> @ ${ME.px(idea.entry)} · <small>paper only · extreme risk · not advice</small>`);
+      log('IDEA', `paper buy $${t.symbol} at ${MCv(idea.sup, idea.entry)} mcap · ${idea.confidence}`, '#fbbf24');
+      toast(`<b style="color:var(--am)">✦ Meme idea:</b> <span class="up">BUY</span> <b>$${esc(t.symbol)}</b> at ${MCv(idea.sup, idea.entry)} mcap · <small>paper only · extreme risk · not advice</small>`);
     } else {
       stage(4, `no idea on $${esc(t.symbol)}${v.atlas.risk === 'VETO' ? ' · ATLAS veto ⛔' : idea ? ' · already tracking one' : ' · no consensus'}`);
       if (v.atlas.risk === 'VETO' && Math.random() < .6) sysMsg(`ATLAS vetoed $${t.symbol} · risk ${s.risk.score}/100`);
@@ -571,7 +580,7 @@
   function idle() {
     BOTS.forEach(b => {
       if (b.id === activeId || Math.random() < .5) return; const t = T.get(botWatch[b.id] || pick(tracked)); if (!t || !t.sig) return; const s = t.sig;
-      const L = { nova: `> $${t.symbol} Δ5m ${ME.sg(t.chg.m5)} vol ${ME.f2(s.volAccel)}x`, luna: `> $${t.symbol} rsi ${ME.f1(s.rsi)} 24h ${ME.sg(t.chg.h24)}`, atlas: `> $${t.symbol} risk ${s.risk.score} liq ${ME.usd(t.liq)}`, echo: `> $${t.symbol} buys 5m ${ME.pct(s.br5)} tx1h ${s.tx1}`, vex: `> $${t.symbol} crowd ${s.br1 > .65 ? 'euphoric' : s.br1 < .4 ? 'scared' : 'meh'}` };
+      const L = { nova: `> $${t.symbol} mc ${MC(t)} Δ5m ${ME.sg(t.chg.m5)} vol ${ME.f2(s.volAccel)}x`, luna: `> $${t.symbol} mc ${MC(t)} rsi ${ME.f1(s.rsi)} 24h ${ME.sg(t.chg.h24)}`, atlas: `> $${t.symbol} risk ${s.risk.score} liq ${ME.usd(t.liq)}`, echo: `> $${t.symbol} buys 5m ${ME.pct(s.br5)} tx1h ${s.tx1}`, vex: `> $${t.symbol} crowd ${s.br1 > .65 ? 'euphoric' : s.br1 < .4 ? 'scared' : 'meh'}` };
       termPush(b.id, L[b.id]);
     });
   }
@@ -598,7 +607,7 @@
     pendingAddr = a;
     log('SEARCH', `you opened $${t.symbol} (${t.pair.slice(0, 8)}…) · bots will inspect it next`, '#f0b90b');
     sysMsg(`you asked the desk to look at $${t.symbol} · next bot on rotation will inspect it`);
-    toast(`<b style="color:var(--bnb)">⌕ $${esc(t.symbol)}</b> opened · ${ME.usd(t.liq)} liquidity · bots will discuss it next · <small>extreme risk, paper only</small>`);
+    toast(`<b style="color:var(--bnb)">⌕ $${esc(t.symbol)}</b> opened · ${MC(t)} mcap · ${ME.usd(t.liq)} liquidity · bots will discuss it next · <small>extreme risk, paper only</small>`);
     renderTable(); renderStats();
   }
   function buildSearch() {
@@ -607,7 +616,7 @@
       input: $('#dsInput'), drop: $('#dsDrop'), debounce: 350, minLen: 2,
       hint: (q, it) => /^0x/.test(q) ? `address lookup on BSC · ${it.length} result(s)` : `DexScreener search · BSC only · ${it.length} token(s) · ↑↓ Enter`,
       source: searchDS,
-      render: ({ t, r, junk }) => `${icon(t)}<span class="nm"><b>$${esc(t.symbol)}</b>${t.liq < ME.MIN_LIQ ? '<span class="lev" style="color:var(--dn)">⚠ LOW LIQ</span>' : junk === 'no-volume' ? '<span class="lev" style="color:var(--am)">⚠ NO VOL</span>' : ''}<small>${esc(t.name)} · ${esc(t.dex)} · /${esc(t.quote)} · ${ME.age(t.created)}</small></span><span class="rt">${ME.px(t.price)}<small>liq ${ME.usd(t.liq)} · ${rbadge(r)}</small></span>`,
+      render: ({ t, r, junk }) => `${icon(t)}<span class="nm"><b>$${esc(t.symbol)}</b>${t.liq < ME.MIN_LIQ ? '<span class="lev" style="color:var(--dn)">⚠ LOW LIQ</span>' : junk === 'no-volume' ? '<span class="lev" style="color:var(--am)">⚠ NO VOL</span>' : ''}<small>${esc(t.name)} · ${esc(t.dex)} · /${esc(t.quote)} · ${ME.age(t.created)}</small></span><span class="rt">${capKind(t)} ${MC(t)}<small>liq ${ME.usd(t.liq)} · ${rbadge(r)}</small></span>`,
       onPick: it => addToken(it.p),
     });
   }
