@@ -5,6 +5,9 @@
   const LWC = window.LightweightCharts;
   const COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'DOGE', 'XRP'];
   const COIN_COLOR = { BTC: '#f7931a', ETH: '#8b9cff', SOL: '#14f195', HYPE: '#5eead4', DOGE: '#e0c25a', XRP: '#c7d2fe' };
+  const EXTRA = []; const ALL = () => COINS.concat(EXTRA);
+  const EXTRA_PAL = ['#f472b6', '#fbbf24', '#a78bfa', '#fb7185', '#34d399', '#60a5fa', '#f97316', '#e879f9', '#2dd4bf', '#facc15'];
+  let UNIVERSE = [], uniAt = 0, pendingCoin = null, pinUntil = 0;
   const API = 'https://api.hyperliquid.xyz/info';
   const WSURL = 'wss://api.hyperliquid.xyz/ws';
   const BOTS = E.BOTS, BOT = E.BOT;
@@ -76,6 +79,8 @@
     try {
       const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
       const [meta, ctxs] = await r.json();
+      UNIVERSE = meta.universe.map((u, i) => ({ name: u.name, lev: u.maxLeverage, delisted: !!u.isDelisted, ctx: ctxs[i] || {} })).filter(u => !u.delisted);
+      uniAt = Date.now();
       meta.universe.forEach((u, i) => { if (M[u.name] && ctxs[i]) M[u.name].ctx = Object.assign({}, ctxs[i], M[u.name].ctx); });
     } catch (e) { /* ws will fill it */ }
   }
@@ -87,9 +92,9 @@
     try { ws = new WebSocket(WSURL); } catch (e) { scheduleReconnect(); return; }
     ws.onopen = () => {
       wsBackoff = 1000; setFeed('WS live', 'ok'); log('WS', 'connected wss://api.hyperliquid.xyz/ws', '#2bf5a0');
-      for (const c of COINS) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }])
+      for (const c of ALL()) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }])
         ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
-      log('WS', `subscribed bbo/trades/candle/ctx × ${COINS.length} coins`, '#2bf5a0');
+      log('WS', `subscribed bbo/trades/candle/ctx × ${ALL().length} coins`, '#2bf5a0');
       stopPoll();
     };
     ws.onmessage = ev => {
@@ -129,7 +134,7 @@
     pollTimer = setInterval(async () => {
       try {
         const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"type":"allMids"}' });
-        const mids = await r.json(); COINS.forEach(c => mids[c] && tick(c, +mids[c]));
+        const mids = await r.json(); ALL().forEach(c => mids[c] && tick(c, +mids[c]));
         setFeed('REST poll', 'warn');
       } catch (e) { setFeed('offline', 'bad'); }
     }, 2000);
@@ -182,7 +187,9 @@
   }
   function renderFocus(full) {
     if (!focus.chart) return;
-    const bars = focusBars(); if (!bars.length) return;
+    const key = focus.coin + '|' + focus.tf; if (focus.rendered !== key) full = true;
+    const bars = focusBars();
+    if (!bars.length) { if (full) { [focus.candle, focus.e9, focus.e21, focus.vol].forEach(x => x.setData([])); focus.rendered = null; focus.lastT = 0; } return; }
     const closes = bars.map(b => b.close);
     const e9 = E.TA.emaSeries(closes, 9), e21 = E.TA.emaSeries(closes, 21);
     const volColor = b => b.close >= b.open ? 'rgba(43,245,160,.35)' : 'rgba(255,77,109,.35)';
@@ -207,8 +214,8 @@
           focus.vol.update({ time: b.time, value: b.volume || 0, color: volColor(b) });
         }
       }
-      focus.lastT = last.time;
-    } catch (e) { focus.lastT = 0; }
+      focus.lastT = last.time; if (full) focus.rendered = key;
+    } catch (e) { focus.lastT = 0; focus.rendered = null; }
   }
   function setFocus(coin, tf, bot) {
     if (tf) focus.tf = tf;
@@ -269,7 +276,7 @@
         <div class="ms"><span id="mchg-${c}">Δ60s —</span><span id="mrsi-${c}">RSI —</span></div>
         <div class="mc"><div class="chart" id="mch-${c}"></div><div class="watchers" id="mw-${c}"></div></div>
         <div class="rsi-bar"><i id="mrb-${c}"></i></div>`;
-      p.onclick = () => setFocus(c);
+      p.onclick = () => { setFocus(c); pinUntil = Date.now() + 45000; };
       wrap.appendChild(p);
       if (!LWC) return;
       const ch = LWC.createChart(document.getElementById('mch-' + c), Object.assign({}, chartBase, {
@@ -308,12 +315,12 @@
     COINS.forEach((c, i) => {
       const t = el('div', 'tk'); t.id = 'tk-' + c; t.style.animationDelay = (i * 60) + 'ms';
       t.innerHTML = `<div class="top"><span class="sym" style="color:${COIN_COLOR[c]}">${c}</span><span class="c24" id="tc-${c}">—</span></div><div class="p" id="tp-${c}">—</div><div class="s"><span id="tv-${c}">vol —</span><span id="tf-${c}">fund —</span></div><canvas id="tsp-${c}" width="200" height="28"></canvas>`;
-      t.onclick = () => setFocus(c);
+      t.onclick = () => { setFocus(c); pinUntil = Date.now() + 45000; };
       w.appendChild(t);
     });
   }
   function renderTicker(c) {
-    const m = M[c]; if (!m.price) return;
+    const m = M[c]; if (!m || !m.price) return;
     const p = document.getElementById('tp-' + c); p.textContent = E.fmtPx(m.price);
     const box = document.getElementById('tk-' + c);
     if (m.prev != null && m.price !== m.prev) {
@@ -342,9 +349,9 @@
     const secs = m.secs; if (secs.length > 60) { const ch = (m.price / secs[secs.length - 60].close - 1) * 100; const e = document.getElementById('mchg-' + c); e.textContent = 'Δ60s ' + E.sg(ch); e.className = ch >= 0 ? 'up' : 'dn'; }
   }
   function renderRsi() {
-    COINS.forEach(c => {
+    ALL().forEach(c => {
       const s = E.computeSignals(M[c]); M[c].sig = s;
-      if (s.rsi == null) return;
+      if (s.rsi == null || !document.getElementById('mrsi-' + c)) return;
       document.getElementById('mrsi-' + c).textContent = 'RSI ' + E.f1(s.rsi);
       const b = document.getElementById('mrb-' + c); b.style.width = s.rsi + '%';
       b.style.background = s.rsi > 70 ? 'var(--dn)' : s.rsi < 30 ? 'var(--up)' : 'linear-gradient(90deg,var(--cy),var(--vi))';
@@ -563,16 +570,18 @@
     setActive(bot.id);
     if (prevActive) sendPacket(prevActive, bot.id, 'HANDOFF');
     setState(bot.id, 'scanning'); stage(0, `<b style="color:${bot.color}">${bot.name}</b> scanning ${COINS.length} markets`);
-    const allViews = {}; COINS.forEach(c => { M[c].sig = E.computeSignals(M[c]); allViews[c] = E.evaluateAll(M[c].sig); });
+    const allViews = {}; ALL().forEach(c => { M[c].sig = E.computeSignals(M[c]); allViews[c] = E.evaluateAll(M[c].sig); });
     termPush(bot.id, `> scan --markets ${COINS.length} --tf 1m`, 'cmd');
     log('CYCLE', `#${cycle} ${bot.name} (${bot.role}) takes the desk`, bot.color);
     for (const c of COINS.slice(0, 3).concat(COINS.slice(3)).slice(0, 4)) { const s = M[c].sig; termPush(bot.id, `  ${c.padEnd(4)} rsi ${E.f1(s.rsi)} Δ5m ${E.sg(s.chg5m)}`); await sleep(140); }
-    const coin = chooseCoin(bot, allViews);
+    let coin = chooseCoin(bot, allViews);
+    const asked = pendingCoin && M[pendingCoin] && M[pendingCoin].price ? pendingCoin : null;
+    if (asked) { coin = asked; pendingCoin = null; termPush(bot.id, `> user request: analyze ${coin}`, 'cmd'); }
     lastCoins.unshift(coin); lastCoins.length = 2;
     const panel = document.querySelector(`.mini[data-coin="${coin}"]`);
-    if (panel) await moveCursor(bot, panel);
+    await moveCursor(bot, panel || $('#focusPanel'));
     setWatching(bot.id, coin);
-    setFocus(coin, null, bot);
+    if (Date.now() > pinUntil || coin === focus.coin) setFocus(coin, null, bot); else $('#focusSub').innerHTML = `pinned by <b style="color:var(--cy)">you</b> · <span style="color:${bot.color}">${bot.name}</span> is looking at ${coin} in the background`;
     log('OPEN', `${bot.name} opened ${coin}-PERP chart`, bot.color);
     setState(bot.id, 'analyzing'); stage(1, `<b style="color:${bot.color}">${bot.name}</b> analyzing ${coin} (${bot.role.toLowerCase()})`);
     termPush(bot.id, `> fetch candles ${coin} 1m n=${M[coin].candles.length}`, 'cmd'); await sleep(350);
@@ -657,7 +666,7 @@
   function idleTerm() {
     BOTS.forEach(b => {
       if (b.id === activeId || Math.random() < 0.45) return;
-      const c = botState[b.id].watching || pick(COINS); const m = M[c]; if (!m.price) return;
+      const c = botState[b.id].watching || pick(COINS); const m = M[c]; if (!m || !m.price) return;
       const s = M[c].sig || E.computeSignals(m);
       const lines = {
         nova: () => `> ${c} ema9-ema21 ${E.sg(s.emaSpread, 3)} Δ10s ${E.sg(s.chg10s)}`,
@@ -819,9 +828,9 @@
   // heatmap
   const HEAT_TF = [['1m', 'chg1m'], ['5m', 'chg5m'], ['15m', 'chg15m'], ['1h', 'chg60m'], ['24h', 'chg24']];
   function drawHeat() {
-    const colMax = HEAT_TF.map(([, k]) => Math.max(1e-9, ...COINS.map(c => Math.abs((M[c].sig || {})[k] || 0))));
+    const colMax = HEAT_TF.map(([, k]) => Math.max(1e-9, ...ALL().map(c => Math.abs((M[c].sig || {})[k] || 0))));
     let h = '<span></span>' + HEAT_TF.map(([l]) => `<span class="hh">${l}</span>`).join('');
-    COINS.forEach(c => {
+    ALL().forEach(c => {
       h += `<span class="hc" style="color:${COIN_COLOR[c]}">${c}</span>`;
       HEAT_TF.forEach(([, k], j) => {
         const v = (M[c].sig || {})[k]; if (v == null) { h += '<span class="cell">—</span>'; return; }
@@ -850,10 +859,53 @@
     d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
   }
 
+  // ---------- search any Hyperliquid perp ----------
+  async function ensureUniverse() { if (!UNIVERSE.length || Date.now() - uniAt > 60000) await loadCtx(); return UNIVERSE; }
+  function addCoin(name) {
+    if (!M[name]) {
+      if (EXTRA.length >= 10) { const old = EXTRA.find(c => c !== focus.coin && !paper.some(p => p.coin === c) && !ideas.some(i => i.coin === c && i.status === 'OPEN')); if (old) removeCoin(old); }
+      M[name] = { coin: name, candles: [], secs: [], cur: null, price: null, prev: null, ctx: {}, seeded: false, hist: false };
+      EXTRA.push(name); COIN_COLOR[name] = COIN_COLOR[name] || EXTRA_PAL[(EXTRA.length - 1) % EXTRA_PAL.length];
+      const u = UNIVERSE.find(x => x.name === name); if (u) { M[name].ctx = u.ctx; if (u.ctx.midPx) M[name].price = +u.ctx.midPx; }
+      if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: name }, { type: 'trades', coin: name }, { type: 'candle', coin: name, interval: '1m' }, { type: 'activeAssetCtx', coin: name }]) ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
+      log('WS', `subscribed ${name} (bbo/trades/candle/ctx)`, '#2bf5a0');
+      loadHistory(name).then(() => { if (focus.coin === name) setFocus(name); renderRsi(); drawHeat(); });
+    }
+    setFocus(name); pinUntil = Date.now() + 45000;
+    $('#focusSub').innerHTML = `pinned by <b style="color:var(--cy)">you</b> · ${name}-PERP live from Hyperliquid · bots will discuss it next`;
+    pendingCoin = name;
+    sysMsg(`you asked the desk to look at ${name} · next bot on rotation will analyze it`);
+    toast(`<b style="color:var(--cy)">⌕ ${esc(name)}-PERP</b> opened · live feed subscribed · bots will discuss it next`);
+  }
+  function removeCoin(c) {
+    const i = EXTRA.indexOf(c); if (i < 0) return; EXTRA.splice(i, 1);
+    if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
+    delete M[c];
+  }
+  function buildSearch() {
+    if (!window.makeSearch) return;
+    window.makeSearch({
+      input: $('#hlInput'), drop: $('#hlDrop'),
+      hint: (q, it) => `${it.length} of ${UNIVERSE.length} Hyperliquid perps · ↑↓ to move · Enter to open`,
+      source: async q => {
+        const U = await ensureUniverse(); const Q = q.toUpperCase();
+        const score = u => { const n = u.name.toUpperCase(); return n === Q ? 0 : n.startsWith(Q) ? 1 : n.includes(Q) ? 2 : 9; };
+        return U.filter(u => score(u) < 9).sort((a, b) => score(a) - score(b) || (+b.ctx.dayNtlVlm || 0) - (+a.ctx.dayNtlVlm || 0)).slice(0, 12);
+      },
+      render: u => {
+        const px = +u.ctx.midPx || +u.ctx.markPx, ch = u.ctx.prevDayPx ? (px / +u.ctx.prevDayPx - 1) * 100 : null;
+        const tracked = M[u.name] ? '<span class="lev" style="color:var(--up)">LIVE</span>' : '';
+        return `<span class="badge-ic" style="background:${COIN_COLOR[u.name] || 'var(--cy)'}">${esc(u.name[0])}</span><span class="nm"><b>${esc(u.name)}</b><span class="lev">${u.lev}x</span>${tracked}<small>vol 24h ${E.fmtUsd(+u.ctx.dayNtlVlm)} · OI ${E.fmtUsd((+u.ctx.openInterest || 0) * px)}</small></span><span class="rt">${E.fmtPx(px)}<small class="${ch >= 0 ? 'up' : 'dn'}">${ch == null ? '' : E.sg(ch)}</small></span>`;
+      },
+      onPick: u => addCoin(u.name),
+    });
+  }
+
   // ---------- main loops ----------
   function everySecond() {
     const sec = Math.floor(Date.now() / 1000);
     COINS.forEach(c => { const m = M[c]; roll(m, sec); if (!m.cur && m.price) m.cur = { time: sec, open: m.price, high: m.price, low: m.price, close: m.price, volume: 0, buy: 0, sell: 0 }; renderMini(c); renderTicker(c); });
+    EXTRA.forEach(c => { const m = M[c]; roll(m, sec); if (!m.cur && m.price) m.cur = { time: sec, open: m.price, high: m.price, low: m.price, close: m.price, volume: 0, buy: 0, sell: 0 }; });
     renderFocus(false); updateFocusHead(false);
     renderPaper(); renderIdeas();
     tps = tickCount; ticksTotal += tickCount; tickCount = 0; $('#tps').textContent = tps; $('#ticksTot').textContent = ticksTotal.toLocaleString('en-US');
@@ -863,7 +915,7 @@
   }
 
   function init() {
-    buildTickers(); buildMinis(); buildBots(); buildFocus(); buildBotStatus(); requestAnimationFrame(rafLoop);
+    buildTickers(); buildMinis(); buildBots(); buildFocus(); buildBotStatus(); buildSearch(); requestAnimationFrame(rafLoop);
     if (!LWC) log('ERR', 'chart library failed to load', '#ff4d6d');
     document.querySelectorAll('#tfSwitch button').forEach(b => b.onclick = () => setFocus(focus.coin, b.dataset.tf));
     log('BOOT', 'AI trading desk starting', '#a78bfa');
@@ -874,7 +926,7 @@
     setInterval(() => { renderRsi(); drawRadar(); drawHeat(); }, 3000);
     setInterval(idleTerm, 2600);
     deskLoop();
-    window.__desk = { M, ideas, paper, closed, get cycle() { return cycle; } }; // for debugging
+    window.__desk = { M, ideas, paper, closed, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
