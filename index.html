@@ -21,14 +21,18 @@
     <div class="logo"><span></span></div>
     <div>
       <h1><span class="glitch" data-text="AI TRADING DESK">AI TRADING DESK</span></h1>
-      <div class="sub">5 bots · live Hyperliquid perps · <b class="paper-tag">PAPER ONLY</b></div>
+      <div class="sub"><span class="sess">session <b>trading-desk-01</b></span> · live Hyperliquid perps · <b class="paper-tag">PAPER ONLY</b></div>
     </div>
   </div>
   <div class="live-pill" id="livePill"><span class="dot"></span><span id="liveTxt">LIVE</span></div>
   <div class="meta">
     <div class="m"><label>UPTIME</label><b id="uptime">00:00:00</b></div>
     <div class="m"><label>CYCLE</label><b id="cycle">#0000</b></div>
+    <div class="m"><label>BOTS</label><b>5</b></div>
     <div class="m"><label>TICKS/S</label><b id="tps">0</b></div>
+    <div class="m"><label>TICKS TOTAL</label><b id="ticksTot">0</b></div>
+    <div class="m hide-sm"><label>MSGS</label><b id="hdrMsgs">0</b></div>
+    <div class="m hide-sm"><label>FPS</label><b id="fps">--</b></div>
     <div class="m"><label>FEED</label><b id="feed" class="warn">connecting…</b></div>
     <div class="m hide-sm"><label>LOCAL</label><b id="clock">--:--:--</b></div>
   </div>
@@ -43,6 +47,23 @@
   <div class="stat"><label>PAPER P&amp;L <em>hypothetical</em></label><b id="stPnl">$0.00</b></div>
   <div class="stat"><label>PAPER WIN RATE</label><b id="stWin">—</b></div>
   <div class="stat"><label>MARKET MOOD</label><b id="stMood">—</b></div>
+</section>
+
+<section class="pipeline panel" id="pipeline">
+  <div class="pl-label">DESK CYCLE <b id="plCycle">#0000</b></div>
+  <div class="stages">
+    <div class="stg" data-i="0"><span class="n">01</span><span class="t">SCAN</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="1"><span class="n">02</span><span class="t">ANALYZE</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="2"><span class="n">03</span><span class="t">DEBATE</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="3"><span class="n">04</span><span class="t">CONSENSUS</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="4"><span class="n">05</span><span class="t">IDEA</span></div>
+  </div>
+  <div class="pl-meter"><i id="plFill"></i></div>
+  <div class="pl-status" id="plStatus">booting…</div>
 </section>
 
 <main class="layout">
@@ -82,6 +103,32 @@
     </div>
   </aside>
 </main>
+
+<section class="ops">
+  <div class="panel net">
+    <div class="panel-head"><div class="ph-title"><span class="ic">⬡</span> BOT NETWORK</div><div class="ph-note">handoffs <b id="busCount">0</b></div></div>
+    <canvas id="netCanvas"></canvas>
+    <div class="bus-head"><span>SESSION BUS · BOT-TO-BOT HANDOFF</span><span id="busLast">—</span></div>
+    <canvas id="busCanvas"></canvas>
+  </div>
+  <div class="panel bstat">
+    <div class="panel-head"><div class="ph-title"><span class="ic">▤</span> BOT STATUS</div><div class="ph-note">conviction</div></div>
+    <div id="botStatus" class="bs-list"></div>
+  </div>
+  <div class="panel radar-p">
+    <div class="panel-head"><div class="ph-title"><span class="ic">◎</span> SIGNAL RADAR</div><div class="ph-note" id="radarCoin">—</div></div>
+    <canvas id="radarCanvas"></canvas>
+    <div class="radar-legend" id="radarLegend"></div>
+  </div>
+  <div class="panel heat-p">
+    <div class="panel-head"><div class="ph-title"><span class="ic">▦</span> HEATMAP · % CHANGE</div></div>
+    <div id="heatmap" class="heat"></div>
+    <div class="decision" id="decision">
+      <div class="dh">LATEST DECISION</div>
+      <div class="dbody">waiting for first consensus…</div>
+    </div>
+  </div>
+</section>
 
 <section class="lower">
   <div class="panel ideas">

@@ -11,6 +11,7 @@ An animated, terminal-style dashboard where five rule-based bot personas watch *
 - **Charts:** [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) v4.2 (CDN): a focus chart with 1m/1s candles, EMA9/21 and volume, plus six 1-second live minis
 - **Bots:** NOVA (momentum), LUNA (mean reversion), ATLAS (risk manager), ECHO (flow & sentiment), VEX (contrarian). Each one computes real indicators (RSI14, EMA9/21 crosses, Bollinger z, ATR, σ of returns, volume spikes, taker-flow imbalance, funding) and turns them into chat messages through personality templates.
 - **Ideas for you:** when the bots reach consensus and ATLAS doesn't veto, the desk publishes an idea with entry, stop (1.5×ATR), target (2R), reasoning, and which bots agreed. Each idea is tracked live.
+- **Ops widgets:** a desk-cycle pipeline (SCAN → ANALYZE → DEBATE → CONSENSUS → IDEA), a bot network graph with animated particle links, a session bus showing bot-to-bot handoff packets, a bot status panel (state and conviction), a signal radar (momentum, trend, volatility, volume, flow, RSI), a coin × timeframe % change heatmap, and a latest-decision box (confidence, compute time, feed lag). All of it is computed from live data.
 - **Paper book:** hypothetical $10k positions per bot, marked to live prices.
 
 > ⚠️ Everything is **paper/hypothetical**. These are not real trades and not financial advice.

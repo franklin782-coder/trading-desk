@@ -21,7 +21,7 @@
   // ---------- market state ----------
   const M = {};
   COINS.forEach(c => M[c] = { coin: c, candles: [], secs: [], cur: null, price: null, prev: null, ctx: {}, seeded: false, hist: false });
-  let tickCount = 0, tps = 0, feedMode = 'connecting';
+  let tickCount = 0, ticksTotal = 0, tps = 0, feedMode = 'connecting';
 
   function roll(m, sec) {
     if (m.cur && m.cur.time < sec) {
@@ -97,7 +97,7 @@
       let j; try { j = JSON.parse(ev.data); } catch (e) { return; }
       const d = j.data;
       switch (j.channel) {
-        case 'bbo': if (d && d.bbo && d.bbo[0] && d.bbo[1]) tick(d.coin, (+d.bbo[0].px + +d.bbo[1].px) / 2); break;
+        case 'bbo': if (d && d.bbo && d.bbo[0] && d.bbo[1]) { tick(d.coin, (+d.bbo[0].px + +d.bbo[1].px) / 2); if (M[d.coin]) M[d.coin].exTs = d.time; } break;
         case 'trades':
           if (Array.isArray(d) && d.length) {
             const c = d[0].coin;
@@ -386,7 +386,7 @@
     });
   }
   function setView(id, view) {
-    botState[id].view = view;
+    botState[id].view = view; setLevel(id, view, botState[id].watching);
     const e = document.getElementById('bv-' + id);
     const v = id === 'atlas' ? view.risk : view.side;
     e.textContent = v; e.style.color = v === 'LONG' || v === 'OK' ? 'var(--up)' : v === 'SHORT' || v === 'VETO' ? 'var(--dn)' : v === 'CAUTION' ? 'var(--am)' : 'var(--mut)';
@@ -434,7 +434,7 @@
     chatEl.appendChild(m);
     while (chatEl.children.length > 80) chatEl.removeChild(chatEl.firstElementChild);
     chatEl.scrollTop = chatEl.scrollHeight;
-    msgCount++; $('#chatCount').textContent = msgCount; const s = $('#stMsgs'); s.textContent = msgCount; bump(s);
+    msgCount++; $('#chatCount').textContent = msgCount; $('#hdrMsgs').textContent = msgCount; const s = $('#stMsgs'); s.textContent = msgCount; bump(s);
   }
   function sysMsg(t) { const m = el('div', 'msg sys', `<div class="bub">${esc(t)}</div>`); chatEl.appendChild(m); chatEl.scrollTop = chatEl.scrollHeight; }
   async function typing(id, ms) {
@@ -557,7 +557,12 @@
     cycle++;
     $('#cycle').textContent = '#' + String(cycle).padStart(4, '0'); bump($('#cycle'));
     const bot = BOTS[(cycle - 1) % BOTS.length];
+    const cyc0 = performance.now();
+    const prevActive = activeId;
+    BOTS.forEach(b => setState(b.id, botState[b.id].watching ? 'watching' : 'idle'));
     setActive(bot.id);
+    if (prevActive) sendPacket(prevActive, bot.id, 'HANDOFF');
+    setState(bot.id, 'scanning'); stage(0, `<b style="color:${bot.color}">${bot.name}</b> scanning ${COINS.length} markets`);
     const allViews = {}; COINS.forEach(c => { M[c].sig = E.computeSignals(M[c]); allViews[c] = E.evaluateAll(M[c].sig); });
     termPush(bot.id, `> scan --markets ${COINS.length} --tf 1m`, 'cmd');
     log('CYCLE', `#${cycle} ${bot.name} (${bot.role}) takes the desk`, bot.color);
@@ -569,10 +574,13 @@
     setWatching(bot.id, coin);
     setFocus(coin, null, bot);
     log('OPEN', `${bot.name} opened ${coin}-PERP chart`, bot.color);
+    setState(bot.id, 'analyzing'); stage(1, `<b style="color:${bot.color}">${bot.name}</b> analyzing ${coin} (${bot.role.toLowerCase()})`);
     termPush(bot.id, `> fetch candles ${coin} 1m n=${M[coin].candles.length}`, 'cmd'); await sleep(350);
     termPush(bot.id, `> stream ${coin} 1s · last ${E.fmtPx(M[coin].price)}`, 'cmd'); await sleep(450);
+    const tc0 = performance.now();
     const sig = E.computeSignals(M[coin]);
     const views = E.evaluateAll(sig);
+    let compMs = performance.now() - tc0;
     for (const l of views[bot.id].lines) { termPush(bot.id, l, 'res'); await sleep(380); }
     const mv = views[bot.id];
     termPush(bot.id, bot.id === 'atlas' ? `> verdict: ${mv.risk}` : `> verdict: ${mv.side} conv=${mv.conv.toFixed(2)}`, 'cmd');
@@ -581,6 +589,7 @@
     const domSide = mv.side !== 'FLAT' ? mv.side : (L >= S ? 'LONG' : 'SHORT');
     await typing(bot.id, rand(1100, 1800));
     post(bot.id, E.message(bot.id, sig, mv, { side: domSide }));
+    setState(bot.id, 'debating'); stage(2, `debate on <b>${coin}</b> · ${bot.name} opened with ${bot.id === 'atlas' ? mv.risk : mv.side}`);
     // debate
     const pool = BOTS.map(b => b.id).filter(i => i !== bot.id);
     const dir = i => i !== 'atlas' && views[i].side !== 'FLAT';
@@ -593,12 +602,13 @@
     while (chosen.length < 2) { const r = pick(pool); if (!chosen.includes(r)) chosen.push(r); }
     if (!chosen.includes('vex') && bot.id !== 'vex' && L + S >= 2 && Math.random() < 0.6) chosen.splice(chosen.length - 1, 0, 'vex');
     for (const r of chosen.slice(0, 4)) {
-      setWatching(r, coin);
+      setWatching(r, coin); sendPacket(bot.id, r, 'ASK ' + coin); setState(r, 'analyzing');
       termPush(r, `> analyze ${coin} --as ${BOT[r].role.toLowerCase().replace(/ /g, '-')}`, 'cmd');
       await sleep(300);
       for (const l of views[r].lines.slice(0, 2)) { termPush(r, l, 'res'); await sleep(220); }
       setView(r, views[r]);
       await typing(r, rand(1200, 2200));
+      setState(r, 'debating'); sendPacket(r, bot.id, r === 'atlas' ? views[r].risk : views[r].side);
       post(r, E.message(r, sig, views[r], { side: domSide, replyTo: { bot: bot.id, side: mv.side } }));
       await sleep(rand(400, 900));
     }
@@ -610,17 +620,26 @@
       if (v.side !== 'FLAT' && v.conv >= 0.5 && views.atlas.risk !== 'VETO') openPaper(id, sig, v);
     }
     // idea for the user
+    stage(3, `consensus check on <b>${coin}</b> · ATLAS risk ${views.atlas.risk}`);
+    const tb0 = performance.now();
     const idea = E.buildIdea(sig, views, Date.now());
+    compMs += performance.now() - tb0;
+    BOTS.forEach(b => setLevel(b.id, views[b.id], coin));
+    renderDecision(coin, views, idea && !ideas.some(i => i.coin === coin && i.status === 'OPEN') && Date.now() - lastIdeaAt > 35000 ? idea : null, compMs, performance.now() - cyc0);
+    await sleep(700);
     if (idea && !ideas.some(i => i.coin === coin && i.status === 'OPEN') && Date.now() - lastIdeaAt > 35000) {
       lastIdeaAt = Date.now();
       const presenter = idea.agree.includes(bot.id) && bot.id !== 'atlas' ? bot.id : idea.agree[0];
       await typing(presenter, 1500);
       post(presenter, `📌 Desk idea for you: ${idea.side} ${coin} @ ${E.fmtPx(idea.entry)}, stop ${E.fmtPx(idea.stop)}, target ${E.fmtPx(idea.target)} (1:2). Agreed: ${idea.agree.map(i => BOT[i].name).join(', ')}${idea.dissent.length ? '. Dissent: ' + idea.dissent.map(d => BOT[d.bot].name).join(', ') : ''}. Idea only, not advice.`, { idea: true });
       addIdea(idea);
+      stage(4, `<b style="color:var(--am)">IDEA PUBLISHED</b> · ${idea.side} ${coin}`);
+      BOTS.forEach(b => sendPacket(presenter, b.id, 'IDEA'));
       log('IDEA', `${idea.side} ${coin} @ ${E.fmtPx(idea.entry)} · ${idea.confidence}`, '#fbbf24');
       toast(`<b style="color:var(--am)">✦ New idea:</b> ${idea.side === 'LONG' ? '<span class="up">LONG</span>' : '<span class="dn">SHORT</span>'} <b>${coin}</b> @ ${E.fmtPx(idea.entry)} · <small>paper idea, not financial advice</small>`);
-    } else if (!idea && Math.random() < 0.35) {
-      sysMsg(`no consensus on ${coin}${views.atlas.risk === 'VETO' ? ' · ATLAS veto' : ''} · moving on`);
+    } else {
+      stage(4, `no new idea on ${coin}${views.atlas.risk === 'VETO' ? ' · ATLAS veto' : idea ? ' · already tracking one' : ' · no consensus'}`);
+      if (!idea && Math.random() < 0.35) sysMsg(`no consensus on ${coin}${views.atlas.risk === 'VETO' ? ' · ATLAS veto' : ''} · moving on`);
     }
   }
   async function deskLoop() {
@@ -651,28 +670,208 @@
     });
   }
 
+  // ---------- ops: pipeline, network, bus, status, radar, heatmap, decision ----------
+  const STAGE_COL = ['#22d3ee', '#a78bfa', '#f472b6', '#fbbf24', '#2bf5a0'];
+  function stage(i, text) {
+    document.querySelectorAll('.stg').forEach(s => { const k = +s.dataset.i; s.classList.toggle('on', k === i); s.classList.toggle('done', k < i); s.style.setProperty('--sc', STAGE_COL[k]); });
+    $('#plFill').style.width = ((i + 1) / 5 * 100) + '%';
+    if (text) $('#plStatus').innerHTML = text;
+    $('#plCycle').textContent = '#' + String(cycle).padStart(4, '0');
+  }
+  function fitCanvas(cv) {
+    const r = cv.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(r.width * d), h = Math.round(r.height * d);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); return { g, w: r.width, h: r.height };
+  }
+  const packets = []; let busCount = 0;
+  function sendPacket(from, to, label) {
+    if (!from || !to || from === to) return;
+    packets.push({ from, to, label, t0: performance.now(), dur: 1200 });
+    busCount++; $('#busCount').textContent = busCount; bump($('#busCount'));
+    $('#busLast').textContent = `${BOT[from].name} → ${BOT[to].name} · ${label}`;
+  }
+  function drawShape(g, shape, x, y, r) {
+    g.beginPath();
+    if (shape === 'circle') g.arc(x, y, r, 0, Math.PI * 2);
+    else {
+      const pts = shape === 'triangle' ? [[0, -1.05], [1, .8], [-1, .8]] : shape === 'square' ? [[-.85, -.85], [.85, -.85], [.85, .85], [-.85, .85]] : shape === 'diamond' ? [[0, -1.1], [1.1, 0], [0, 1.1], [-1.1, 0]] : [0, 1, 2, 3, 4, 5].map(i => [Math.cos(Math.PI / 3 * i - Math.PI / 2), Math.sin(Math.PI / 3 * i - Math.PI / 2)]);
+      pts.forEach((p, i) => i ? g.lineTo(x + p[0] * r, y + p[1] * r) : g.moveTo(x + p[0] * r, y + p[1] * r)); g.closePath();
+    }
+  }
+  function drawBotNode(g, b, x, y, r, active, t) {
+    if (active) { const pr = r + 8 + Math.sin(t / 200) * 3; const gr = g.createRadialGradient(x, y, r, x, y, pr + 14); gr.addColorStop(0, b.color + '88'); gr.addColorStop(1, b.color + '00'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, pr + 14, 0, Math.PI * 2); g.fill(); }
+    drawShape(g, b.shape, x, y + (b.shape === 'triangle' ? 2 : 0), r);
+    const gr = g.createLinearGradient(x - r, y - r, x + r, y + r); gr.addColorStop(0, b.color); gr.addColorStop(1, shade(b.color)); g.fillStyle = gr; g.fill();
+    g.lineWidth = active ? 2 : 1; g.strokeStyle = active ? '#fff' : 'rgba(255,255,255,.35)'; g.stroke();
+    const blink = (t / 1000 + b.name.length) % 4.5 < 0.12; const ey = y + (b.shape === 'triangle' ? r * .3 : -r * .05);
+    g.fillStyle = '#fff'; [-1, 1].forEach(s => { g.beginPath(); g.ellipse(x + s * r * .32, ey, r * .17, blink ? r * .03 : r * .2, 0, 0, Math.PI * 2); g.fill(); });
+    if (!blink) { g.fillStyle = '#0b1020'; [-1, 1].forEach(s => { g.beginPath(); g.arc(x + s * r * .32 + r * .04, ey + r * .04, r * .09, 0, Math.PI * 2); g.fill(); }); }
+  }
+  const edgePhase = {};
+  function drawNet(t) {
+    const cv = $('#netCanvas'); if (!cv) return; const { g, w, h } = fitCanvas(cv);
+    g.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 + 4, R = Math.min(w * .36, h * .38);
+    const pos = {}; BOTS.forEach((b, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; pos[b.id] = [cx + Math.cos(a) * R * 1.25, cy + Math.sin(a) * R]; });
+    // edges + flowing particles
+    for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) {
+      const a = pos[BOTS[i].id], b = pos[BOTS[j].id], k = i + '-' + j;
+      const hot = activeId && (BOTS[i].id === activeId || BOTS[j].id === activeId);
+      g.strokeStyle = hot ? 'rgba(160,190,255,.22)' : 'rgba(120,160,255,.08)'; g.lineWidth = 1; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+      if (!edgePhase[k]) edgePhase[k] = [Math.random(), Math.random(), Math.random()];
+      edgePhase[k].forEach((ph, n) => {
+        const p = ((t / (hot ? 2200 : 5200)) + ph) % 1, dir = n % 2 ? 1 - p : p;
+        const x = a[0] + (b[0] - a[0]) * dir, y = a[1] + (b[1] - a[1]) * dir;
+        g.fillStyle = (n % 2 ? BOTS[j] : BOTS[i]).color + (hot ? 'cc' : '55'); g.fillRect(x - 1, y - 1, 2, 2);
+      });
+    }
+    // hub
+    g.strokeStyle = 'rgba(34,211,238,.25)'; BOTS.forEach(b => { g.setLineDash([2, 4]); g.beginPath(); g.moveTo(cx, cy); g.lineTo(pos[b.id][0], pos[b.id][1]); g.stroke(); }); g.setLineDash([]);
+    g.fillStyle = 'rgba(5,7,13,.9)'; g.strokeStyle = 'rgba(34,211,238,.6)'; g.beginPath(); g.arc(cx, cy, 20, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.beginPath(); g.arc(cx, cy, 24 + (t / 60 % 14), 0, Math.PI * 2); g.strokeStyle = `rgba(34,211,238,${.35 - (t / 60 % 14) / 40})`; g.stroke();
+    g.fillStyle = COIN_COLOR[focus.coin] || '#fff'; g.font = "700 10px 'JetBrains Mono',monospace"; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(focus.coin, cx, cy);
+    // packets
+    const now = performance.now();
+    packets.forEach(pk => {
+      const p = Math.min(1, (now - pk.t0) / pk.dur), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const a = pos[pk.from], b = pos[pk.to]; const mx = (a[0] + b[0]) / 2 + (cy - (a[1] + b[1]) / 2) * .25, my = (a[1] + b[1]) / 2 - (cx - (a[0] + b[0]) / 2) * .25;
+      for (let s = 0; s < 6; s++) { const q = Math.max(0, e - s * .03); const x = (1 - q) * (1 - q) * a[0] + 2 * (1 - q) * q * mx + q * q * b[0], y = (1 - q) * (1 - q) * a[1] + 2 * (1 - q) * q * my + q * q * b[1]; g.globalAlpha = 1 - s / 6; g.fillStyle = BOT[pk.from].color; g.beginPath(); g.arc(x, y, 3.5 - s * .45, 0, Math.PI * 2); g.fill(); }
+      g.globalAlpha = 1;
+    });
+    BOTS.forEach(b => {
+      const [x, y] = pos[b.id], act = b.id === activeId; drawBotNode(g, b, x, y, act ? 17 : 14, act, t);
+      g.font = "700 9px 'JetBrains Mono',monospace"; g.fillStyle = act ? b.color : 'rgba(216,226,255,.6)'; g.textAlign = 'center'; g.fillText(b.name, x, y + 27);
+    });
+  }
+  function drawBus(t) {
+    const cv = $('#busCanvas'); if (!cv) return; const { g, w, h } = fitCanvas(cv);
+    g.clearRect(0, 0, w, h);
+    const y = h - 20, pad = 30, xs = {}; BOTS.forEach((b, i) => xs[b.id] = pad + i * (w - 2 * pad) / 4);
+    g.strokeStyle = 'rgba(120,160,255,.18)'; g.lineWidth = 2; g.beginPath(); g.moveTo(pad - 14, y); g.lineTo(w - pad + 14, y); g.stroke();
+    g.setLineDash([3, 6]); g.lineDashOffset = -t / 40; g.strokeStyle = 'rgba(34,211,238,.35)'; g.beginPath(); g.moveTo(pad - 14, y); g.lineTo(w - pad + 14, y); g.stroke(); g.setLineDash([]);
+    BOTS.forEach(b => drawBotNode(g, b, xs[b.id], y, b.id === activeId ? 9 : 7.5, b.id === activeId, t));
+    const now = performance.now();
+    for (let i = packets.length - 1; i >= 0; i--) {
+      const pk = packets[i], p = (now - pk.t0) / pk.dur;
+      if (p >= 1.15) { packets.splice(i, 1); continue; }
+      const q = Math.min(1, p), x = xs[pk.from] + (xs[pk.to] - xs[pk.from]) * q, yy = y - Math.sin(q * Math.PI) * (h - 34) - 2;
+      g.fillStyle = BOT[pk.from].color; g.shadowColor = BOT[pk.from].color; g.shadowBlur = 10;
+      g.fillRect(x - 5, yy - 4, 10, 8); g.shadowBlur = 0;
+      g.font = "600 8.5px 'JetBrains Mono',monospace"; g.textAlign = 'center'; g.fillStyle = 'rgba(230,237,255,.85)'; g.fillText(pk.label, x, yy - 9);
+    }
+  }
+  let frames = 0, fpsT = performance.now();
+  function rafLoop(t) {
+    frames++; if (t - fpsT >= 1000) { $('#fps').textContent = Math.round(frames * 1000 / (t - fpsT)); frames = 0; fpsT = t; }
+    try { drawNet(t); drawBus(t); } catch (e) { }
+    requestAnimationFrame(rafLoop);
+  }
+  // bot status panel
+  const bstat = {};
+  function buildBotStatus() {
+    const w = $('#botStatus');
+    BOTS.forEach(b => {
+      bstat[b.id] = { state: 'idle', level: 0.08 };
+      const r = el('div', 'bs'); r.style.setProperty('--bc', b.color);
+      r.innerHTML = `${avatar(b, 'av')}<span class="nm" style="color:${b.color}">${b.name}</span><span class="bar"><i id="bsb-${b.id}" style="background:${b.color};width:8%"></i></span><span class="stt" id="bss-${b.id}">IDLE</span><span class="bs-sub" id="bsx-${b.id}">${esc(b.role)} · waiting</span>`;
+      w.appendChild(r);
+    });
+  }
+  function setState(id, state) {
+    const s = bstat[id]; if (!s) return; s.state = state;
+    const e = document.getElementById('bss-' + id); e.textContent = state.toUpperCase(); e.classList.toggle('act', state !== 'idle' && state !== 'watching');
+    document.getElementById('bsb-' + id).classList.toggle('busy', state === 'scanning' || state === 'analyzing' || state === 'debating');
+  }
+  function setLevel(id, view, coin) {
+    const lvl = id === 'atlas' ? ({ OK: .85, CAUTION: .5, VETO: .2 }[view.risk] || .1) : Math.max(.08, view.conv);
+    document.getElementById('bsb-' + id).style.width = Math.round(lvl * 100) + '%';
+    const v = id === 'atlas' ? 'risk ' + view.risk : view.side + ' · conv ' + view.conv.toFixed(2);
+    document.getElementById('bsx-' + id).textContent = `${coin || ''} · ${v}`;
+  }
+  // radar
+  const RADAR_AX = ['MOMENTUM', 'TREND', 'VOLATILITY', 'VOLUME', 'FLOW', 'RSI'];
+  function radarVals(s) {
+    const th = Math.tanh;
+    return [.5 + .5 * th((s.chg5m || 0) / .15), .5 + .5 * th((s.emaSpread || 0) / .05), th((s.vol || 0) / .12), th((s.volSpike || 0) / 1.6), .5 + .5 * (s.flowImb || 0), (s.rsi == null ? 50 : s.rsi) / 100];
+  }
+  function drawRadar() {
+    const cv = $('#radarCanvas'); if (!cv) return; const { g, w, h } = fitCanvas(cv);
+    g.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 + 2, R = Math.min(w, h) / 2 - 30, n = 6;
+    const pt = (i, v) => [cx + Math.cos(-Math.PI / 2 + i * 2 * Math.PI / n) * R * v, cy + Math.sin(-Math.PI / 2 + i * 2 * Math.PI / n) * R * v];
+    g.strokeStyle = 'rgba(120,160,255,.14)'; g.lineWidth = 1;
+    [.25, .5, .75, 1].forEach(r => { g.beginPath(); for (let i = 0; i < n; i++) { const p = pt(i, r); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); } g.closePath(); g.stroke(); });
+    g.font = "600 8.5px 'JetBrains Mono',monospace"; g.fillStyle = 'rgba(127,139,176,.9)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let i = 0; i < n; i++) { const p = pt(i, 1); g.beginPath(); g.moveTo(cx, cy); g.lineTo(p[0], p[1]); g.stroke(); const q = pt(i, 1.2); g.fillText(RADAR_AX[i], q[0], q[1]); }
+    const poly = (coin, alpha, dash) => {
+      const s = M[coin].sig; if (!s || !s.ready) return; const v = radarVals(s), col = COIN_COLOR[coin];
+      g.beginPath(); v.forEach((x, i) => { const p = pt(i, Math.max(.04, x)); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.closePath();
+      g.setLineDash(dash ? [3, 3] : []); g.strokeStyle = col; g.lineWidth = dash ? 1 : 2; g.stroke(); g.setLineDash([]);
+      if (!dash) { g.fillStyle = col + alpha; g.fill(); v.forEach((x, i) => { const p = pt(i, Math.max(.04, x)); g.fillStyle = col; g.beginPath(); g.arc(p[0], p[1], 2.5, 0, Math.PI * 2); g.fill(); }); }
+    };
+    if (focus.coin !== 'BTC') poly('BTC', '00', true);
+    poly(focus.coin, '40', false);
+    const s = M[focus.coin].sig;
+    $('#radarCoin').innerHTML = `<span style="color:${COIN_COLOR[focus.coin]}">${focus.coin}</span>${focus.coin !== 'BTC' ? ' <span style="color:var(--dim)">vs BTC┄</span>' : ''}`;
+    if (s) $('#radarLegend').innerHTML = `<span>Δ5m <b>${E.sg(s.chg5m)}</b></span><span>EMAΔ <b>${E.sg(s.emaSpread, 3)}</b></span><span>σ <b>${E.f2(s.vol)}%</b></span><span>VOLx <b>${E.f2(s.volSpike)}</b></span><span>FLOW <b>${E.sg(s.flowImb * 100, 0)}</b></span><span>RSI <b>${E.f1(s.rsi)}</b></span>`;
+  }
+  // heatmap
+  const HEAT_TF = [['1m', 'chg1m'], ['5m', 'chg5m'], ['15m', 'chg15m'], ['1h', 'chg60m'], ['24h', 'chg24']];
+  function drawHeat() {
+    const colMax = HEAT_TF.map(([, k]) => Math.max(1e-9, ...COINS.map(c => Math.abs((M[c].sig || {})[k] || 0))));
+    let h = '<span></span>' + HEAT_TF.map(([l]) => `<span class="hh">${l}</span>`).join('');
+    COINS.forEach(c => {
+      h += `<span class="hc" style="color:${COIN_COLOR[c]}">${c}</span>`;
+      HEAT_TF.forEach(([, k], j) => {
+        const v = (M[c].sig || {})[k]; if (v == null) { h += '<span class="cell">—</span>'; return; }
+        const a = .12 + .6 * Math.min(1, Math.abs(v) / colMax[j]);
+        h += `<span class="cell" style="background:${v >= 0 ? `rgba(43,245,160,${a})` : `rgba(255,77,109,${a})`}">${v >= 0 ? '+' : ''}${v.toFixed(Math.abs(v) < 1 ? 2 : 1)}</span>`;
+      });
+    });
+    $('#heatmap').innerHTML = h;
+  }
+  // decision box
+  function renderDecision(coin, views, idea, compMs, cycleMs) {
+    const dir = ['nova', 'luna', 'echo', 'vex'];
+    const L = dir.filter(i => views[i].side === 'LONG'), S = dir.filter(i => views[i].side === 'SHORT');
+    const maj = L.length >= S.length ? L : S, side = L.length === S.length ? null : (L.length > S.length ? 'LONG' : 'SHORT');
+    const agreement = side ? (maj.length - (side === 'LONG' ? S.length : L.length) * 0.5) / 4 : 0;
+    const conv = maj.length ? maj.reduce((a, i) => a + views[i].conv, 0) / maj.length : 0;
+    const conf = Math.round(Math.max(0, Math.min(1, agreement * .6 + conv * .4 - (views.atlas.risk === 'VETO' ? .3 : views.atlas.risk === 'CAUTION' ? .1 : 0))) * 100);
+    const lag = M[coin].exTs ? Math.max(0, Date.now() - M[coin].exTs) : null;
+    const res = idea ? `<span class="side-pill ${idea.side === 'LONG' ? 'L' : 'S'}">IDEA ${idea.side}</span>` : side ? `<span class="side-pill" style="border:1px solid var(--line2);color:var(--mut)">LEAN ${side} · NO IDEA</span>` : `<span class="side-pill" style="border:1px solid var(--line2);color:var(--mut)">NO CONSENSUS</span>`;
+    const col = conf >= 60 ? 'var(--up)' : conf >= 35 ? 'var(--am)' : 'var(--mut)';
+    const d = $('#decision');
+    d.querySelector('.dbody').innerHTML = `<div class="dec-top"><span class="coin" style="color:${COIN_COLOR[coin]}">${coin}</span>${res}<span class="dec-conf">CONFIDENCE<b style="color:${col}">${conf}%</b></span></div>
+      <div class="dec-meter"><i style="width:${conf}%;background:${col}"></i></div>
+      <div class="dec-votes">${BOTS.map(b => { const v = views[b.id]; const t = b.id === 'atlas' ? v.risk : v.side; const c = t === 'LONG' || t === 'OK' ? 'var(--up)' : t === 'SHORT' || t === 'VETO' ? 'var(--dn)' : t === 'CAUTION' ? 'var(--am)' : 'var(--mut)'; return `<span>${avatar(b, 'av')}<b style="color:${c}">${t}</b></span>`; }).join('')}</div>
+      <div class="dec-lat"><span>compute <b>${compMs.toFixed(2)}ms</b></span><span>feed lag <b>${lag == null ? '—' : lag + 'ms'}</b></span><span>cycle <b>${(cycleMs / 1000).toFixed(1)}s</b></span></div>`;
+    d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
+  }
+
   // ---------- main loops ----------
   function everySecond() {
     const sec = Math.floor(Date.now() / 1000);
     COINS.forEach(c => { const m = M[c]; roll(m, sec); if (!m.cur && m.price) m.cur = { time: sec, open: m.price, high: m.price, low: m.price, close: m.price, volume: 0, buy: 0, sell: 0 }; renderMini(c); renderTicker(c); });
     renderFocus(false); updateFocusHead(false);
     renderPaper(); renderIdeas();
-    tps = tickCount; tickCount = 0; $('#tps').textContent = tps;
+    tps = tickCount; ticksTotal += tickCount; tickCount = 0; $('#tps').textContent = tps; $('#ticksTot').textContent = ticksTotal.toLocaleString('en-US');
     const up = Math.floor((Date.now() - T0) / 1000);
     $('#uptime').textContent = [up / 3600, (up % 3600) / 60, up % 60].map(x => String(Math.floor(x)).padStart(2, '0')).join(':');
     $('#clock').textContent = hhmmss();
   }
 
   function init() {
-    buildTickers(); buildMinis(); buildBots(); buildFocus();
+    buildTickers(); buildMinis(); buildBots(); buildFocus(); buildBotStatus(); requestAnimationFrame(rafLoop);
     if (!LWC) log('ERR', 'chart library failed to load', '#ff4d6d');
     document.querySelectorAll('#tfSwitch button').forEach(b => b.onclick = () => setFocus(focus.coin, b.dataset.tf));
     log('BOOT', 'AI trading desk starting', '#a78bfa');
     loadCtx();
-    Promise.all(COINS.map(loadHistory)).then(() => { setFocus(focus.coin); renderRsi(); });
+    Promise.all(COINS.map(loadHistory)).then(() => { setFocus(focus.coin); renderRsi(); drawRadar(); drawHeat(); });
     connect();
     setInterval(everySecond, 1000);
-    setInterval(renderRsi, 5000);
+    setInterval(() => { renderRsi(); drawRadar(); drawHeat(); }, 3000);
     setInterval(idleTerm, 2600);
     deskLoop();
     window.__desk = { M, ideas, paper, closed, get cycle() { return cycle; } }; // for debugging
