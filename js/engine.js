@@ -225,7 +225,9 @@
           side = 'SHORT'; conv = clamp(0.3 - s.flowImb * 0.6 + (spike ? 0.2 : 0), 0, 1);
           why = `sellers hitting bids (flow ${sg(s.flowImb * 100, 0)}), volume ${f2(s.volSpike)}x normal`;
         } else {
-          why = `flow is balanced (${sg(s.flowImb * 100, 0)}), volume ${f2(s.volSpike)}x normal`;
+          why = Math.abs(s.flowImb) > 0.25
+            ? `flow leans ${s.flowImb > 0 ? 'buy' : 'sell'} (${sg(s.flowImb * 100, 0)}) but price isn't following and volume is only ${f2(s.volSpike)}x normal`
+            : `flow is balanced (${sg(s.flowImb * 100, 0)}), volume ${f2(s.volSpike)}x normal`;
         }
         return { side, conv, why, lines };
       },
