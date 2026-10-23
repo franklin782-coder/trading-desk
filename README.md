@@ -1,6 +1,6 @@
 # AI Trading Desk
 
-**Live:** https://jack10147.github.io/trading-desk/ · **BNB MEMES:** https://jack10147.github.io/trading-desk/memes.html
+**Live:** https://jack10147.github.io/trading-desk/
 
 An animated, terminal-style dashboard where five rule-based bot personas watch **real, live crypto charts** and debate trade ideas.
 
@@ -20,12 +20,4 @@ Plain static HTML/CSS/JS with no build step. `js/engine.js` holds the pure indic
 
 ## Search
 - **Main desk:** search any Hyperliquid perp (autocomplete from `meta`/`metaAndAssetCtxs`). Picking a coin subscribes its WS feeds, loads `candleSnapshot`, opens it in the big chart, and queues it for the bots to discuss.
-- **BNB MEMES:** DexScreener `/latest/dex/search` filtered to BSC. You can also paste a token or pair address (`/tokens/v1/bsc/{addr}` with a `/latest/dex/pairs/bsc/{pair}` fallback). Picking a result opens the DexScreener embed and stats, adds the token to the table, and the bots inspect it next.
 - Keyboard: `/` focuses search, ↑/↓ moves through results, Enter opens one, Esc closes the dropdown.
-
-## BNB MEMES page (`memes.html`)
-- Discovery: about 40 DexScreener searches (well-known BSC meme tickers plus generic meme terms), plus BSC tokens from `token-boosts/top`, `token-boosts/latest` and `token-profiles/latest`, combined via `tokens/v1/bsc`. Each token keeps its most liquid pair with a WBNB/USDT/USD1/BUSD/USDC quote.
-- Junk filter: liquidity under $40K, 24h volume under $10K, non-meme tokens (stables, wrapped/pegged majors, DeFi/infra), and odd quote pairs. Every token gets a 0–100 risk score from liquidity, liq/mcap, age, FDV/MC, sell pressure, churn, socials and copycat tickers.
-- Refresh: the top ~40 tokens every 30s, hot/focused pairs every 6s, discovery every 6 min. 1m candles come from GeckoTerminal, throttled to about 1 request per 10s.
-- Focus chart: DexScreener embed (`?embed=1&theme=dark&info=0…`), with a "DESK 1m" toggle for our own candle chart. A wall of 6 live mini charts shows what the bots have opened.
-- Bots: meme personas (momentum, dip hunter, rug guard, degen flow, contrarian), all using real data. Ideas are PAPER BUY only, confidence is capped at LOW/MEDIUM, stops are wide, and ATLAS vetoes HIGH/EXTREME risk.
