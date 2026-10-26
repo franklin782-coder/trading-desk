@@ -165,8 +165,8 @@
     return s.expectancy < 0 ? 0.5 : 1;
   }
 
-  // TD-YYYYMMDD-NN (UTC date)
-  function ticketId(now, n) { return 'TD-' + dayKey(now).replace(/-/g, '') + '-' + String(n).padStart(2, '0'); }
+  // TD-YYYYMMDD-NN (UTC date); stocks desk uses prefix 'TS'
+  function ticketId(now, n, prefix) { return (prefix || 'TD') + '-' + dayKey(now).replace(/-/g, '') + '-' + String(n).padStart(2, '0'); }
 
   const Risk = { HARD, DEFAULTS, effectiveLimits, lossPerUnit, sizePosition, bookDepth, checkBreakers, trailingLosses, reviewTrade, stats, riskScaleFor, ticketId, dayKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = Risk; else root.Risk = Risk;

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Trading Desk · STOCKS · 5 bots paper-trading stock perps</title>
+<meta name="description" content="Five AI bot personas watch real-time Hyperliquid HIP-3 stock perps (NVDA, TSLA, MSFT…), compute indicators and debate trade ideas. Paper only, not financial advice.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2322d3ee'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2305070d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo"><span></span></div>
+    <div>
+      <h1><span class="glitch" data-text="AI STOCKS DESK">AI STOCKS DESK</span></h1>
+      <div class="sub"><span class="sess">session <b>stocks-desk-01</b></span> · live Hyperliquid HIP-3 stock perps (dex xyz) · <b id="mktStatus" class="mkt-st">US MARKET …</b> · <b class="paper-tag">PAPER ONLY</b></div>
+    </div>
+  </div>
+  <nav class="nav"><a href="./">◆ MAIN DESK</a><a href="stocks.html" class="on">▲ STOCKS</a></nav>
+  <div class="search" id="hlSearch"><span class="sic">⌕</span><input id="hlInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search any stock perp… (AAPL, NFLX, ORCL)" aria-label="Search Hyperliquid stock tickers"><kbd>/</kbd><div class="sdrop" id="hlDrop" role="listbox"></div></div>
+  <div class="live-pill" id="livePill"><span class="dot"></span><span id="liveTxt">LIVE</span></div>
+  <div class="meta">
+    <div class="m"><label>UPTIME</label><b id="uptime">00:00:00</b></div>
+    <div class="m"><label>CYCLE</label><b id="cycle">#0000</b></div>
+    <div class="m"><label>BOTS</label><b>5</b></div>
+    <div class="m"><label>TICKS/S</label><b id="tps">0</b></div>
+    <div class="m"><label>TICKS TOTAL</label><b id="ticksTot">0</b></div>
+    <div class="m hide-sm"><label>MSGS</label><b id="hdrMsgs">0</b></div>
+    <div class="m hide-sm"><label>FPS</label><b id="fps">--</b></div>
+    <div class="m"><label>FEED</label><b id="feed" class="warn">connecting…</b></div>
+    <div class="m hide-sm"><label>LOCAL</label><b id="clock">--:--:--</b></div>
+  </div>
+</header>
+
+<section class="tickers" id="tickers"></section>
+
+<section class="desk-stats">
+  <div class="stat"><label>ACTIVE BOT</label><b id="stActive">—</b></div>
+  <div class="stat"><label>MESSAGES</label><b id="stMsgs">0</b></div>
+  <div class="stat"><label>IDEAS ISSUED</label><b id="stIdeas">0</b></div>
+  <div class="stat"><label>PAPER P&amp;L <em>hypothetical</em></label><b id="stPnl">$0.00</b></div>
+  <div class="stat"><label>PAPER WIN RATE</label><b id="stWin">—</b></div>
+  <div class="stat"><label>MARKET MOOD</label><b id="stMood">—</b></div>
+</section>
+
+<section class="pipeline panel" id="pipeline">
+  <div class="pl-label">DESK CYCLE <b id="plCycle">#0000</b></div>
+  <div class="stages">
+    <div class="stg" data-i="0"><span class="n">01</span><span class="t">SCAN</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="1"><span class="n">02</span><span class="t">ANALYZE</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="2"><span class="n">03</span><span class="t">DEBATE</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="3"><span class="n">04</span><span class="t">CONSENSUS</span></div>
+    <div class="arrow">→</div>
+    <div class="stg" data-i="4"><span class="n">05</span><span class="t">IDEA</span></div>
+  </div>
+  <div class="pl-meter"><i id="plFill"></i></div>
+  <div class="pl-status" id="plStatus">booting…</div>
+</section>
+
+<main class="layout">
+  <section class="charts">
+    <div class="panel focus" id="focusPanel">
+      <div class="panel-head">
+        <div class="ph-left">
+          <span class="focus-av" id="focusAv"></span>
+          <div>
+            <div class="focus-title"><span id="focusCoin">NVDA</span><span class="perp">-PERP</span> <span id="focusPx" class="px">—</span> <span id="focusChg" class="chg">—</span></div>
+            <div class="focus-sub" id="focusSub">waiting for the first bot…</div>
+          </div>
+        </div>
+        <div class="ph-right">
+          <div class="chips" id="focusChips"></div>
+          <div class="tf" id="tfSwitch"><button data-tf="1s">1s</button><button data-tf="1m" class="on">1m</button></div>
+        </div>
+      </div>
+      <div class="focus-body">
+        <div id="focusChart" class="chart"></div>
+        <div class="scan" id="scan"></div>
+        <div class="open-overlay" id="openOverlay"></div>
+        <div class="legend"><span class="lg e9">EMA 9</span><span class="lg e21">EMA 21</span><span class="lg ide">idea levels</span></div>
+      </div>
+    </div>
+    <div class="minis" id="minis"></div>
+  </section>
+
+  <aside class="side">
+    <div class="panel chat">
+      <div class="panel-head"><div class="ph-title"><span class="ic">💬</span> DESK CHAT <span class="count" id="chatCount">0</span></div><div class="typing" id="typing"></div></div>
+      <div class="chat-list" id="chat"></div>
+    </div>
+    <div class="panel log">
+      <div class="panel-head"><div class="ph-title"><span class="ic">⌁</span> ACTIVITY LOG</div><div class="ph-note">live</div></div>
+      <div class="log-list" id="log"></div>
+    </div>
+  </aside>
+</main>
+
+<section class="ops">
+  <div class="panel net">
+    <div class="panel-head"><div class="ph-title"><span class="ic">⬡</span> BOT NETWORK</div><div class="ph-note">handoffs <b id="busCount">0</b></div></div>
+    <canvas id="netCanvas"></canvas>
+    <div class="bus-head"><span>SESSION BUS · BOT-TO-BOT HANDOFF</span><span id="busLast">—</span></div>
+    <canvas id="busCanvas"></canvas>
+  </div>
+  <div class="panel bstat">
+    <div class="panel-head"><div class="ph-title"><span class="ic">▤</span> BOT STATUS</div><div class="ph-note">conviction</div></div>
+    <div id="botStatus" class="bs-list"></div>
+  </div>
+  <div class="panel radar-p">
+    <div class="panel-head"><div class="ph-title"><span class="ic">◎</span> SIGNAL RADAR</div><div class="ph-note" id="radarCoin">—</div></div>
+    <canvas id="radarCanvas"></canvas>
+    <div class="radar-legend" id="radarLegend"></div>
+  </div>
+  <div class="panel heat-p">
+    <div class="panel-head"><div class="ph-title"><span class="ic">▦</span> HEATMAP · % CHANGE</div></div>
+    <div id="heatmap" class="heat"></div>
+    <div class="decision" id="decision">
+      <div class="dh">LATEST DECISION</div>
+      <div class="dbody">waiting for first consensus…</div>
+    </div>
+  </div>
+</section>
+
+<section class="lower">
+  <div class="panel ideas">
+    <div class="panel-head">
+      <div class="ph-title big"><span class="ic spark">✦</span> IDEAS FOR YOU</div>
+      <div class="nfa">IDEAS ONLY · NOT FINANCIAL ADVICE · NO REAL TRADES</div>
+    </div>
+    <p class="ideas-intro">After each debate, if enough bots agree and <b>ATLAS</b> (risk) doesn't veto, the desk publishes a concrete idea with entry, stop and target. Every idea is tracked live against real prices.</p>
+    <div class="ideas-list" id="ideas"><div class="empty" id="ideasEmpty"><div class="radar"></div>Bots are debating… first idea incoming</div></div>
+  </div>
+  <div class="panel paper">
+    <div class="panel-head"><div class="ph-title"><span class="ic">📄</span> PAPER BOOK</div><div class="paper-badge">PAPER · $10K account per bot · 1% risk sizing · not real</div></div>
+    <div class="paper-wrap">
+      <table class="paper-table">
+        <thead><tr><th>BOT</th><th>COIN</th><th>SIDE</th><th>ENTRY / STOP</th><th>NOW</th><th>P&amp;L (R)</th></tr></thead>
+        <tbody id="paperBody"><tr class="ph"><td colspan="6">no paper positions yet</td></tr></tbody>
+      </table>
+    </div>
+    <div class="paper-closed"><label>CLOSED</label><div id="paperClosed" class="closed-list">—</div></div>
+  </div>
+</section>
+
+<section class="riskdesk">
+  <div class="panel atlas-panel">
+    <div class="panel-head"><div class="ph-title"><span class="ic" style="color:var(--am)">■</span> ATLAS · CIRCUIT BREAKERS</div><div class="ph-note">any TRIPPED rule blocks new entries</div></div>
+    <div class="brk-grid" id="atlasRules"></div>
+    <div class="atlas-limits" id="atlasLimits"></div>
+    <form class="atlas-set" id="atlasSettings" onsubmit="return false"></form>
+    <div class="atlas-log"><label>VETO LOG</label><div id="atlasLog"></div></div>
+  </div>
+  <div class="panel journal-panel">
+    <div class="panel-head"><div class="ph-title"><span class="ic">📓</span> JOURNAL &amp; LESSONS <span class="count" id="journalCount">0</span></div><div class="j-btns"><button type="button" id="jExport">⤓ EXPORT JSON</button><button type="button" id="jReset" title="reset paper accounts (journal is kept)">RESET BOOK</button></div></div>
+    <div class="stats-wrap"><table class="paper-table stats-table" id="botStats"></table></div>
+    <div class="journal-list" id="journalList"></div>
+  </div>
+</section>
+
+<section class="bots" id="bots"></section>
+
+<footer>
+  <div>Market data: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api" target="_blank" rel="noopener">Hyperliquid public API</a> HIP-3 builder-deployed stock perps on dex <code>xyz</code> (WebSocket bbo / trades / candle / activeAssetCtx + REST candleSnapshot). Perps trade 24/7 and track the underlying stock via oracle; outside US hours prices come from perp traders only, streamed straight into your browser. Charts by <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener">TradingView Lightweight Charts</a>.</div>
+  <div class="fine">The bots are rule-based scripts with personalities. All indicators are computed live from real prices, but every position and P&amp;L shown is <b>hypothetical paper trading</b>. Nothing here is a real trade or financial advice.</div>
+</footer>
+
+<div class="bot-cursor" id="cursor"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+window.DESK_CFG = {
+  market: 'stocks', dex: 'xyz', ticketPrefix: 'TS', lsPrefix: 'ts', unitLabel: 'HIP-3 stock perps', focus: 'NVDA', bench: 'SP500',
+  coins: ['NVDA', 'AMZN', 'GOOGL', 'AMD', 'AVGO', 'MU', 'TSLA', 'MSFT', 'META', 'CRWV', 'IREN', 'PLTR', 'COIN', 'ANT', 'SP500', 'XYZ100'],
+  colors: { NVDA: '#76b900', AMZN: '#ff9900', GOOGL: '#4285f4', AMD: '#ed1c24', AVGO: '#cc092f', MU: '#5b8def', TSLA: '#e82127', MSFT: '#00a4ef', META: '#0866ff', CRWV: '#a78bfa', IREN: '#2dd4bf', PLTR: '#e5e7eb', COIN: '#1652f0', ANT: '#d97757', SP500: '#facc15', XYZ100: '#22d3ee' },
+};
+</script>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/risk.js"></script>
+<script src="js/market-hours.js"></script>
+<script src="js/search.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

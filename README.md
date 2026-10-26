@@ -18,7 +18,7 @@ An animated, terminal-style dashboard where five rule-based bot personas watch *
 - **Journal & lessons:** every closed paper trade is appended to a local journal with R result, fees, slippage estimate, separate *process* and *outcome* grades and a one-line lesson. Per-bot stats (win rate, avg R, expectancy, last-20 expectancy, profit factor, equity curve). Export as JSON.
 - **Tickets:** each desk idea is numbered `TD-YYYYMMDD-NN` with exact entry, stop, target and size per $10k.
 
-Tests: `node tests/risk.test.js`
+Tests: `node tests/risk.test.js && node tests/stocks.test.js`
 
 Risk/journal concepts adapted from [galleonlabs/hypergrok-trading-desk](https://github.com/galleonlabs/hypergrok-trading-desk) (MIT).
 
@@ -29,3 +29,13 @@ Plain static HTML/CSS/JS with no build step. `js/engine.js` holds the pure indic
 ## Search
 - **Main desk:** search any Hyperliquid perp (autocomplete from `meta`/`metaAndAssetCtxs`). Picking a coin subscribes its WS feeds, loads `candleSnapshot`, opens it in the big chart, and queues it for the bots to discuss.
 - Keyboard: `/` focuses search, ↑/↓ moves through results, Enter opens one, Esc closes the dropdown.
+
+## Pages
+
+- **◆ MAIN DESK** (`index.html`) — BTC, ETH, SOL, HYPE, DOGE, XRP (+ any searched Hyperliquid perp). Tickets `TD-YYYYMMDD-NN`, storage `td.*`.
+- **▲ STOCKS** (`stocks.html`) — the same five bots (NOVA, LUNA, ATLAS, ECHO, VEX), same risk module, circuit breakers, journal and lessons, paper-trading **Hyperliquid HIP-3 stock perps** on builder dex `xyz` (`xyz:NVDA` etc., public API, no keys, 24/7).
+  Watchlist: NVDA, AMZN, GOOGL, AMD, AVGO, MU, TSLA, MSFT, META, CRWV, IREN, PLTR, COIN, ANT (Anthropic pre-IPO perp), SP500, XYZ100 (Nasdaq-100). Search finds any other `xyz` stock perp (AAPL, NFLX, ORCL…).
+  Tickets `TS-YYYYMMDD-NN`; separate paper book and journal (`ts.*` in localStorage, every journal row carries `market: "stocks"`), so crypto and stock stats never mix.
+  A badge shows the US session (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED, New York time, holidays not modelled). Outside regular hours perps still trade, but prices are set by perp traders only.
+- One shared `js/app.js` drives both pages; `stocks.html` sets `window.DESK_CFG` (dex, coins, ticket prefix, storage prefix). `js/market-hours.js` is pure and unit-tested.
+- The old BNB Memes page has been removed.

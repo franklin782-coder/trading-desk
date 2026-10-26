@@ -3,8 +3,16 @@
   'use strict';
   const E = window.Engine;
   const LWC = window.LightweightCharts;
-  const COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'DOGE', 'XRP'];
-  const COIN_COLOR = { BTC: '#f7931a', ETH: '#8b9cff', SOL: '#14f195', HYPE: '#5eead4', DOGE: '#e0c25a', XRP: '#c7d2fe' };
+  // Per-page config: index.html uses the defaults (crypto); stocks.html sets window.DESK_CFG (Hyperliquid HIP-3 dex "xyz").
+  const CFG = Object.assign({ market: 'crypto', dex: '', coins: ['BTC', 'ETH', 'SOL', 'HYPE', 'DOGE', 'XRP'], colors: { BTC: '#f7931a', ETH: '#8b9cff', SOL: '#14f195', HYPE: '#5eead4', DOGE: '#e0c25a', XRP: '#c7d2fe' }, ticketPrefix: 'TD', lsPrefix: 'td', unitLabel: 'Hyperliquid perps' }, window.DESK_CFG || {});
+  const COINS = CFG.coins.slice();
+  const BENCH = CFG.bench || COINS[0];
+  const COIN_RE = new RegExp('\\b(' + COINS.join('|') + ')\\b', 'g');
+  const COIN_COLOR = Object.assign({}, CFG.colors);
+  const DEXP = CFG.dex ? CFG.dex + ':' : '';           // wire name prefix, e.g. "xyz:"
+  const W = c => DEXP + c;                               // internal short name → API coin
+  const S = c => (DEXP && c && c.startsWith(DEXP)) ? c.slice(DEXP.length) : c; // API coin → short name
+  const DEXQ = CFG.dex ? { dex: CFG.dex } : {};
   const EXTRA = []; const ALL = () => COINS.concat(EXTRA);
   const EXTRA_PAL = ['#f472b6', '#fbbf24', '#a78bfa', '#fb7185', '#34d399', '#60a5fa', '#f97316', '#e879f9', '#2dd4bf', '#facc15'];
   let UNIVERSE = [], uniAt = 0, pendingCoin = null, pinUntil = 0;
@@ -64,7 +72,7 @@
 
   async function loadHistory(c) {
     try {
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'candleSnapshot', req: { coin: c, interval: '1m', startTime: Date.now() - 240 * 60e3 } }) });
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'candleSnapshot', req: { coin: W(c), interval: '1m', startTime: Date.now() - 240 * 60e3 } }) });
       const j = await r.json();
       const hist = j.map(k => ({ time: k.t / 1000, open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v }));
       const m = M[c];
@@ -77,11 +85,11 @@
   }
   async function loadCtx() {
     try {
-      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ type: 'metaAndAssetCtxs' }, DEXQ)) });
       const [meta, ctxs] = await r.json();
-      UNIVERSE = meta.universe.map((u, i) => ({ name: u.name, lev: u.maxLeverage, delisted: !!u.isDelisted, ctx: ctxs[i] || {} })).filter(u => !u.delisted);
+      UNIVERSE = meta.universe.map((u, i) => ({ name: S(u.name), lev: u.maxLeverage, delisted: !!u.isDelisted, ctx: ctxs[i] || {} })).filter(u => !u.delisted);
       uniAt = Date.now();
-      meta.universe.forEach((u, i) => { if (M[u.name] && ctxs[i]) M[u.name].ctx = Object.assign({}, ctxs[i], M[u.name].ctx); });
+      meta.universe.forEach((u, i) => { const n = S(u.name); if (M[n] && ctxs[i]) M[n].ctx = Object.assign({}, ctxs[i], M[n].ctx); });
     } catch (e) { /* ws will fill it */ }
   }
 
@@ -91,8 +99,8 @@
     setFeed('connecting', 'warn');
     try { ws = new WebSocket(WSURL); } catch (e) { scheduleReconnect(); return; }
     ws.onopen = () => {
-      wsBackoff = 1000; setFeed('WS live', 'ok'); log('WS', 'connected wss://api.hyperliquid.xyz/ws', '#2bf5a0');
-      for (const c of ALL()) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }, { type: 'l2Book', coin: c }])
+      wsBackoff = 1000; setFeed('WS live', 'ok'); log('WS', 'connected wss://api.hyperliquid.xyz/ws' + (CFG.dex ? ' · HIP-3 dex ' + CFG.dex : ''), '#2bf5a0');
+      for (const c of ALL()) for (const sub of [{ type: 'bbo', coin: W(c) }, { type: 'trades', coin: W(c) }, { type: 'candle', coin: W(c), interval: '1m' }, { type: 'activeAssetCtx', coin: W(c) }, { type: 'l2Book', coin: W(c) }])
         ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
       log('WS', `subscribed bbo/trades/candle/ctx × ${ALL().length} coins`, '#2bf5a0');
       stopPoll();
@@ -101,6 +109,9 @@
       lastMsg = Date.now();
       let j; try { j = JSON.parse(ev.data); } catch (e) { return; }
       const d = j.data;
+      if (d && typeof d.coin === 'string') d.coin = S(d.coin);
+      if (d && typeof d.s === 'string') d.s = S(d.s);
+      if (Array.isArray(d)) d.forEach(t => { if (t && typeof t.coin === 'string') t.coin = S(t.coin); });
       switch (j.channel) {
         case 'bbo': if (d && d.bbo && d.bbo[0] && d.bbo[1]) { tick(d.coin, (+d.bbo[0].px + +d.bbo[1].px) / 2); if (M[d.coin]) { M[d.coin].exTs = d.time; const bp = +d.bbo[0].px, ap = +d.bbo[1].px; M[d.coin].spreadPct = (ap - bp) / ((ap + bp) / 2) * 100; } } break;
         case 'l2Book': if (d && M[d.coin] && d.levels) { M[d.coin].book = d.levels; M[d.coin].bookTs = Date.now(); } break;
@@ -134,8 +145,8 @@
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
       try {
-        const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"type":"allMids"}' });
-        const mids = await r.json(); ALL().forEach(c => mids[c] && tick(c, +mids[c]));
+        const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ type: 'allMids' }, DEXQ)) });
+        const mids = await r.json(); ALL().forEach(c => mids[W(c)] && tick(c, +mids[W(c)]));
         setFeed('REST poll', 'warn');
       } catch (e) { setFeed('offline', 'bad'); }
     }, 2000);
@@ -169,7 +180,7 @@
   const pf = p => { const d = precision(p || 1); return { type: 'price', precision: d, minMove: Math.pow(10, -d) }; };
 
   // focus chart
-  let focus = { coin: 'BTC', tf: '1m', chart: null, candle: null, e9: null, e21: null, vol: null, lastT: 0, lines: [], bot: null };
+  let focus = { coin: CFG.focus || COINS[0], tf: '1m', chart: null, candle: null, e9: null, e21: null, vol: null, lastT: 0, lines: [], bot: null };
   function buildFocus() {
     if (!LWC) return;
     const c = LWC.createChart($('#focusChart'), Object.assign({}, chartBase, { timeScale: Object.assign({}, chartBase.timeScale, { rightOffset: 6, barSpacing: 7 }) }));
@@ -427,7 +438,7 @@
   const chatEl = $('#chat');
   function fmtMsg(t) {
     let h = esc(t);
-    h = h.replace(/\b(BTC|ETH|SOL|HYPE|DOGE|XRP)\b/g, '<span class="coin">$1</span>');
+    h = h.replace(COIN_RE, '<span class="coin">$1</span>');
     h = h.replace(/@(NOVA|LUNA|ATLAS|ECHO|VEX)\b/g, (m, n) => `<span class="at" style="color:${BOTS.find(b => b.name === n).color}">@${n}</span>`);
     h = h.replace(/(\+\d+(\.\d+)?%)/g, '<span class="up">$1</span>').replace(/(-\d+(\.\d+)?%)/g, '<span class="dn">$1</span>');
     return h;
@@ -465,7 +476,7 @@
   // Sizing, limits and breakers live in js/risk.js (pure, unit-tested). This section only wires them to the UI.
   const RK = window.Risk;
   const START_EQ = 10000, REF_EQ = 10000, TRADERS = ['nova', 'luna', 'echo', 'vex'];
-  const LS_BOOK = 'td.book.v2', LS_JOURNAL = 'td.journal.v1', JOURNAL_MAX = 3000;
+  const LS_BOOK = CFG.lsPrefix + '.book.v2', LS_JOURNAL = CFG.lsPrefix + '.journal.v1', JOURNAL_MAX = 3000;
   const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* quota / private mode */ } };
   const book = lsGet(LS_BOOK, null) || { accts: {}, open: [], ticketDay: '', ticketN: 0, settings: {} };
@@ -518,7 +529,7 @@
     const rv = RK.reviewTrade({ side: p.side, entry: p.entry, exit, stop: p.stop, target: p.target, qty: p.qty, riskUsd: p.riskUsd, fees, reason, atlas: p.atlas, sizedOk: p.riskPct <= RK.HARD.riskPerTrade + 1e-9 });
     paper.splice(paper.indexOf(p), 1);
     const a = book.accts[p.bot]; a.equity += rv.pnl; a.curve.push([Date.now(), a.equity]); if (a.curve.length > 500) a.curve.splice(0, a.curve.length - 500);
-    const j = { n: (journal.length ? journal[journal.length - 1].n : 0) + 1, bot: p.bot, coin: p.coin, side: p.side, ticket: p.ticket || null,
+    const j = { n: (journal.length ? journal[journal.length - 1].n : 0) + 1, market: CFG.market, bot: p.bot, coin: p.coin, side: p.side, ticket: p.ticket || null,
       openedAt: p.opened, closedAt: Date.now(), entry: p.entry, exit, stop: p.stop, target: p.target, qty: p.qty, notional: p.notional,
       riskUsd: p.riskUsd, riskPct: p.riskPct, atlas: p.atlas, scale: p.scale, reason, fees, slippageUsd, pnl: rv.pnl, pct: rv.pnl / p.notional * 100, r: rv.r,
       process: rv.process, outcome: rv.outcome, lesson: rv.lesson, why: p.why, equityAfter: a.equity };
@@ -599,7 +610,7 @@
   }
   function exportJournal() {
     const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), note: 'paper trades only', limits, accounts: book.accts, journal }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `trading-desk-journal-${RK.dayKey(Date.now())}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `trading-desk-${CFG.market}-journal-${RK.dayKey(Date.now())}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   function resetBook() {
     if (!confirm('Reset paper accounts to $10k each and clear open paper positions? The journal is kept (append-only).')) return;
@@ -607,7 +618,7 @@
   }
   function nextTicket() {
     const k = RK.dayKey(Date.now()); if (book.ticketDay !== k) { book.ticketDay = k; book.ticketN = 0; }
-    book.ticketN++; saveBook(); return RK.ticketId(Date.now(), book.ticketN);
+    book.ticketN++; saveBook(); return RK.ticketId(Date.now(), book.ticketN, CFG.ticketPrefix);
   }
 
   // ---------- ideas for you ----------
@@ -935,10 +946,10 @@
       g.setLineDash(dash ? [3, 3] : []); g.strokeStyle = col; g.lineWidth = dash ? 1 : 2; g.stroke(); g.setLineDash([]);
       if (!dash) { g.fillStyle = col + alpha; g.fill(); v.forEach((x, i) => { const p = pt(i, Math.max(.04, x)); g.fillStyle = col; g.beginPath(); g.arc(p[0], p[1], 2.5, 0, Math.PI * 2); g.fill(); }); }
     };
-    if (focus.coin !== 'BTC') poly('BTC', '00', true);
+    if (focus.coin !== BENCH && M[BENCH]) poly(BENCH, '00', true);
     poly(focus.coin, '40', false);
     const s = M[focus.coin].sig;
-    $('#radarCoin').innerHTML = `<span style="color:${COIN_COLOR[focus.coin]}">${focus.coin}</span>${focus.coin !== 'BTC' ? ' <span style="color:var(--dim)">vs BTC┄</span>' : ''}`;
+    $('#radarCoin').innerHTML = `<span style="color:${COIN_COLOR[focus.coin]}">${focus.coin}</span>${focus.coin !== BENCH ? ' <span style="color:var(--dim)">vs ' + BENCH + '┄</span>' : ''}`;
     if (s) $('#radarLegend').innerHTML = `<span>Δ5m <b>${E.sg(s.chg5m)}</b></span><span>EMAΔ <b>${E.sg(s.emaSpread, 3)}</b></span><span>σ <b>${E.f2(s.vol)}%</b></span><span>VOLx <b>${E.f2(s.volSpike)}</b></span><span>FLOW <b>${E.sg(s.flowImb * 100, 0)}</b></span><span>RSI <b>${E.f1(s.rsi)}</b></span>`;
   }
   // heatmap
@@ -983,7 +994,7 @@
       M[name] = { coin: name, candles: [], secs: [], cur: null, price: null, prev: null, ctx: {}, seeded: false, hist: false };
       EXTRA.push(name); COIN_COLOR[name] = COIN_COLOR[name] || EXTRA_PAL[(EXTRA.length - 1) % EXTRA_PAL.length];
       const u = UNIVERSE.find(x => x.name === name); if (u) { M[name].ctx = u.ctx; if (u.ctx.midPx) M[name].price = +u.ctx.midPx; }
-      if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: name }, { type: 'trades', coin: name }, { type: 'candle', coin: name, interval: '1m' }, { type: 'activeAssetCtx', coin: name }, { type: 'l2Book', coin: name }]) ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
+      if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: W(name) }, { type: 'trades', coin: W(name) }, { type: 'candle', coin: W(name), interval: '1m' }, { type: 'activeAssetCtx', coin: W(name) }, { type: 'l2Book', coin: W(name) }]) ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
       log('WS', `subscribed ${name} (bbo/trades/candle/ctx)`, '#2bf5a0');
       loadHistory(name).then(() => { if (focus.coin === name) setFocus(name); renderRsi(); drawHeat(); });
     }
@@ -995,14 +1006,14 @@
   }
   function removeCoin(c) {
     const i = EXTRA.indexOf(c); if (i < 0) return; EXTRA.splice(i, 1);
-    if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }, { type: 'l2Book', coin: c }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
+    if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: W(c) }, { type: 'trades', coin: W(c) }, { type: 'candle', coin: W(c), interval: '1m' }, { type: 'activeAssetCtx', coin: W(c) }, { type: 'l2Book', coin: W(c) }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
     delete M[c];
   }
   function buildSearch() {
     if (!window.makeSearch) return;
     window.makeSearch({
       input: $('#hlInput'), drop: $('#hlDrop'),
-      hint: (q, it) => `${it.length} of ${UNIVERSE.length} Hyperliquid perps · ↑↓ to move · Enter to open`,
+      hint: (q, it) => `${it.length} of ${UNIVERSE.length} ${CFG.unitLabel} · ↑↓ to move · Enter to open`,
       source: async q => {
         const U = await ensureUniverse(); const Q = q.toUpperCase();
         const score = u => { const n = u.name.toUpperCase(); return n === Q ? 0 : n.startsWith(Q) ? 1 : n.includes(Q) ? 2 : 9; };
