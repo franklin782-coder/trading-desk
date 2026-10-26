@@ -18,7 +18,7 @@ An animated, terminal-style dashboard where five rule-based bot personas watch *
 - **Journal & lessons:** every closed paper trade is appended to a local journal with R result, fees, slippage estimate, separate *process* and *outcome* grades and a one-line lesson. Per-bot stats (win rate, avg R, expectancy, last-20 expectancy, profit factor, equity curve). Export as JSON.
 - **Tickets:** each desk idea is numbered `TD-YYYYMMDD-NN` with exact entry, stop, target and size per $10k.
 
-Tests: `node tests/risk.test.js && node tests/stocks.test.js`
+Tests: `for f in tests/*.test.js; do node $f; done`
 
 Risk/journal concepts adapted from [galleonlabs/hypergrok-trading-desk](https://github.com/galleonlabs/hypergrok-trading-desk) (MIT).
 
@@ -39,3 +39,9 @@ Plain static HTML/CSS/JS with no build step. `js/engine.js` holds the pure indic
   A badge shows the US session (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED, New York time, holidays not modelled). Outside regular hours perps still trade, but prices are set by perp traders only.
 - One shared `js/app.js` drives both pages; `stocks.html` sets `window.DESK_CFG` (dex, coins, ticket prefix, storage prefix). `js/market-hours.js` is pure and unit-tested.
 - The old BNB Memes page has been removed.
+
+## Capital split & portfolio (80/20)
+
+- Each trading bot (NOVA, LUNA, ECHO, VEX) owns **$10,000 paper**: **$8,000 crypto book** (main desk, 80%) + **$2,000 stocks book** (stocks desk, 20%). ATLAS is the risk officer and has no book. Each desk sizes 1% risk off its own book (`Risk.bookStart(market)`, tested in `tests/allocation.test.js`). Old `*.book.v2` $10k books are reset once to the new split (journal kept).
+- Main desk universe: majors **BTC, ETH, SOL, BNB** always, plus the top 6 other Hyperliquid perps by 24h volume picked at load (`Risk.pickTopByVolume`); the ATLAS liquidity rule still applies.
+- **PORTFOLIO panel** (`js/portfolio.js`, on both pages): per-bot total equity, crypto vs stocks book, realized/unrealized P&L, % change, combined total; every open position (ID, bot, asset, side, size in units and $, entry, now, stop, target, unrealized $ and %, opened time); recent closed trades. Click a row to open that chart (switches desk if needed). Every bot position now gets a ticket ID (`TD-…` / `TS-…`).

@@ -168,6 +168,17 @@
   // TD-YYYYMMDD-NN (UTC date); stocks desk uses prefix 'TS'
   function ticketId(now, n, prefix) { return (prefix || 'TD') + '-' + dayKey(now).replace(/-/g, '') + '-' + String(n).padStart(2, '0'); }
 
-  const Risk = { HARD, DEFAULTS, effectiveLimits, lossPerUnit, sizePosition, bookDepth, checkBreakers, trailingLosses, reviewTrade, stats, riskScaleFor, ticketId, dayKey };
+  // Capital allocation: each bot owns $10k split 80% crypto (main desk) / 20% stocks (stocks desk).
+  // Each desk sizes risk off ITS OWN book's equity, so crypto stays the main theme.
+  const TOTAL_PER_BOT = 10000, ALLOC = { crypto: 0.8, stocks: 0.2 };
+  function bookStart(market) { const w = ALLOC[market]; if (w == null) throw new Error('unknown market ' + market); return TOTAL_PER_BOT * w; }
+
+  // Top-N names by 24h notional volume, excluding ones already tracked. Pure.
+  function pickTopByVolume(list, exclude, n) {
+    const ex = new Set(exclude || []);
+    return (list || []).filter(u => u && u.name && !ex.has(u.name) && /^[A-Z0-9]+$/.test(u.name) && +u.vol > 0).sort((a, b) => b.vol - a.vol).slice(0, n).map(u => u.name);
+  }
+
+  const Risk = { pickTopByVolume, TOTAL_PER_BOT, ALLOC, bookStart, HARD, DEFAULTS, effectiveLimits, lossPerUnit, sizePosition, bookDepth, checkBreakers, trailingLosses, reviewTrade, stats, riskScaleFor, ticketId, dayKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = Risk; else root.Risk = Risk;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -4,10 +4,10 @@
   const E = window.Engine;
   const LWC = window.LightweightCharts;
   // Per-page config: index.html uses the defaults (crypto); stocks.html sets window.DESK_CFG (Hyperliquid HIP-3 dex "xyz").
-  const CFG = Object.assign({ market: 'crypto', dex: '', coins: ['BTC', 'ETH', 'SOL', 'HYPE', 'DOGE', 'XRP'], colors: { BTC: '#f7931a', ETH: '#8b9cff', SOL: '#14f195', HYPE: '#5eead4', DOGE: '#e0c25a', XRP: '#c7d2fe' }, ticketPrefix: 'TD', lsPrefix: 'td', unitLabel: 'Hyperliquid perps' }, window.DESK_CFG || {});
+  const CFG = Object.assign({ market: 'crypto', dex: '', coins: ['BTC', 'ETH', 'SOL', 'BNB'], dynamicTop: 6, colors: { BTC: '#f7931a', ETH: '#8b9cff', SOL: '#14f195', BNB: '#f3ba2f', HYPE: '#5eead4', DOGE: '#e0c25a', XRP: '#c7d2fe' }, ticketPrefix: 'TD', lsPrefix: 'td', unitLabel: 'Hyperliquid perps' }, window.DESK_CFG || {});
   const COINS = CFG.coins.slice();
   const BENCH = CFG.bench || COINS[0];
-  const COIN_RE = new RegExp('\\b(' + COINS.join('|') + ')\\b', 'g');
+  let COIN_RE = new RegExp('\\b(' + COINS.join('|') + ')\\b', 'g');
   const COIN_COLOR = Object.assign({}, CFG.colors);
   const DEXP = CFG.dex ? CFG.dex + ':' : '';           // wire name prefix, e.g. "xyz:"
   const W = c => DEXP + c;                               // internal short name → API coin
@@ -475,12 +475,16 @@
   // ---------- paper book (per-bot $10k accounts, risk-sized, persisted) ----------
   // Sizing, limits and breakers live in js/risk.js (pure, unit-tested). This section only wires them to the UI.
   const RK = window.Risk;
-  const START_EQ = 10000, REF_EQ = 10000, TRADERS = ['nova', 'luna', 'echo', 'vex'];
-  const LS_BOOK = CFG.lsPrefix + '.book.v2', LS_JOURNAL = CFG.lsPrefix + '.journal.v1', JOURNAL_MAX = 3000;
+  const START_EQ = RK.bookStart(CFG.market), REF_EQ = START_EQ, TRADERS = ['nova', 'luna', 'echo', 'vex'];
+  const LS_BOOK = CFG.lsPrefix + '.book.v3', LS_JOURNAL = CFG.lsPrefix + '.journal.v1', JOURNAL_MAX = 3000;
   const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* quota / private mode */ } };
   const book = lsGet(LS_BOOK, null) || { accts: {}, open: [], ticketDay: '', ticketN: 0, settings: {} };
   TRADERS.forEach(id => { if (!book.accts[id]) book.accts[id] = { equity: START_EQ, day: '', dayStart: START_EQ, curve: [[Date.now(), START_EQ]] }; });
+  const MIGRATED = !localStorage.getItem(LS_BOOK) && !!localStorage.getItem(CFG.lsPrefix + '.book.v2');
+  if (MIGRATED) { try { localStorage.removeItem(CFG.lsPrefix + '.book.v2'); } catch (e) { } }
+  saveBookNow();
+  function saveBookNow() { try { localStorage.setItem(LS_BOOK, JSON.stringify(book)); } catch (e) { } }
   const journal = lsGet(LS_JOURNAL, []);
   const paper = book.open, closed = journal; // closed = journal (oldest→newest)
   let limits = RK.effectiveLimits(book.settings);
@@ -515,10 +519,10 @@
     const openRisk = paper.filter(p => p.bot === id).reduce((a, p) => a + p.riskUsd, 0);
     const sz = RK.sizePosition({ equity: equityNow(id), entry, stop: st.stop, openRiskUsd: openRisk, riskScale: scale, limits });
     if (!(sz.qty > 0)) { atlasVeto(BOT[id].name, sig.coin, ['TOTAL_OPEN_RISK'], 'no risk budget left'); return; }
-    const p = { id: id + sig.coin + Date.now(), bot: id, coin: sig.coin, side: view.side, entry, mid0: sig.price, stop: st.stop, target: st.target, qty: sz.qty, notional: sz.notional, riskUsd: sz.riskUsd, riskPct: sz.riskPct, lev: sz.leverage, cappedBy: sz.cappedBy, scale, atlas: atlasRisk, why: view.why, conv: view.conv, fees: sz.notional * limits.feeRate, opened: Date.now(), isNew: true };
+    const p = { id: id + sig.coin + Date.now(), ticket: nextTicket(), market: CFG.market, bot: id, coin: sig.coin, side: view.side, entry, mid0: sig.price, stop: st.stop, target: st.target, qty: sz.qty, notional: sz.notional, riskUsd: sz.riskUsd, riskPct: sz.riskPct, lev: sz.leverage, cappedBy: sz.cappedBy, scale, atlas: atlasRisk, why: view.why, conv: view.conv, fees: sz.notional * limits.feeRate, opened: Date.now(), isNew: true };
     paper.push(p); saveBook();
     termPush(id, `> paper ${p.side.toLowerCase()} ${p.coin} qty ${p.qty.toPrecision(4)} @ ${E.fmtPx(p.entry)} risk $${p.riskUsd.toFixed(0)} (sim)`, 'cmd');
-    log('PAPER', `${BOT[id].name} opens PAPER ${p.side} ${p.coin} @ ${E.fmtPx(p.entry)} · ${(p.riskPct * 100).toFixed(2)}% risk · ${p.lev.toFixed(2)}x${scale < 1 ? ' · size×' + scale : ''}`, BOT[id].color);
+    log('PAPER', `${p.ticket} ${BOT[id].name} opens PAPER ${p.side} ${p.coin} @ ${E.fmtPx(p.entry)} · ${(p.riskPct * 100).toFixed(2)}% risk · ${p.lev.toFixed(2)}x${scale < 1 ? ' · size×' + scale : ''}`, BOT[id].color);
   }
   function closePaper(p, reason) {
     const mid = M[p.coin] && M[p.coin].price; if (!mid) return;
@@ -1004,6 +1008,7 @@
     sysMsg(`you asked the desk to look at ${name} · next bot on rotation will analyze it`);
     toast(`<b style="color:var(--cy)">⌕ ${esc(name)}-PERP</b> opened · live feed subscribed · bots will discuss it next`);
   }
+  function openAsset(c) { if (M[c]) { setFocus(c); pinUntil = Date.now() + 45000; document.getElementById('focusPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); } else addCoin(c); }
   function removeCoin(c) {
     const i = EXTRA.indexOf(c); if (i < 0) return; EXTRA.splice(i, 1);
     if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: W(c) }, { type: 'trades', coin: W(c) }, { type: 'candle', coin: W(c), interval: '1m' }, { type: 'activeAssetCtx', coin: W(c) }, { type: 'l2Book', coin: W(c) }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
@@ -1041,7 +1046,17 @@
     $('#clock').textContent = hhmmss();
   }
 
-  function init() {
+  // Main desk: majors are fixed (CFG.coins); add the top-N most liquid other perps by 24h volume (bots may trade them, ATLAS liquidity rule still applies).
+  async function pickDynamic() {
+    const n = CFG.dynamicTop || 0; if (!n) return;
+    try { await Promise.race([loadCtx(), sleep(6000)]); } catch (e) { }
+    const extra = RK.pickTopByVolume(UNIVERSE.map(u => ({ name: u.name, vol: +u.ctx.dayNtlVlm || 0 })), COINS, n);
+    extra.forEach((c, i) => { COINS.push(c); M[c] = { coin: c, candles: [], secs: [], cur: null, price: null, prev: null, ctx: (UNIVERSE.find(u => u.name === c) || {}).ctx || {}, seeded: false, hist: false }; COIN_COLOR[c] = COIN_COLOR[c] || EXTRA_PAL[i % EXTRA_PAL.length]; });
+    COIN_RE = new RegExp('\\b(' + COINS.join('|') + ')\\b', 'g');
+    if (extra.length) setTimeout(() => log('UNIV', `majors ${CFG.coins.join(' ')} + top-volume ${extra.join(' ')}`, '#22d3ee'), 500);
+  }
+  async function init() {
+    await pickDynamic();
     buildTickers(); buildMinis(); buildSettings(); renderJournal();
     $('#jExport').onclick = exportJournal; $('#jReset').onclick = resetBook;
     setTimeout(() => paper.forEach(p => { if (!M[p.coin]) { try { addCoin(p.coin); } catch (e) { } } }), 4000); buildBots(); buildFocus(); buildBotStatus(); buildSearch(); requestAnimationFrame(rafLoop);
@@ -1055,7 +1070,10 @@
     setInterval(() => { renderRsi(); drawRadar(); drawHeat(); }, 3000);
     setInterval(idleTerm, 2600);
     deskLoop();
-    window.__desk = { M, ideas, paper, closed, book, journal, focus, setFocus, get limits() { return limits; }, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
+    if (MIGRATED) setTimeout(() => sysMsg(`capital re-split 80/20: each bot now has $${START_EQ.toLocaleString('en-US')} on this ${CFG.market} desk (old $10k paper book reset, journal kept)`), 1500);
+    const qc = new URLSearchParams(location.search).get('coin'); if (qc) setTimeout(() => openAsset(qc.toUpperCase()), 3000);
+    setInterval(() => { paper.forEach(p => { const m = M[p.coin]; if (m && m.price) p.mark = m.price; }); saveBook(); }, 3000);
+    window.__desk = { cfg: CFG, openAsset, equityNow, START_EQ, COINS, M, ideas, paper, closed, book, journal, focus, setFocus, get limits() { return limits; }, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
