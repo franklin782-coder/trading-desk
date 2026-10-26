@@ -22,13 +22,14 @@
   }
   function price(m, coin, p) {
     if (m === here() && window.__desk && window.__desk.M[coin] && window.__desk.M[coin].price) return window.__desk.M[coin].price;
-    return mids[m][coin] || (p && p.mark) || null;
+    return mids[m][coin] || (p && p.mark) || (window.__server && window.__server.markets[m].prices && window.__server.markets[m].prices[coin]) || null;
   }
   function load() {
     const R = window.Risk, out = { pos: [], closed: [], bots: {} };
     TRADERS.forEach(id => out.bots[id] = { crypto: null, stocks: null });
     for (const m of Object.keys(MK)) {
-      const start = R.bookStart(m), book = get(MK[m].ls + '.book.v3'), jr = get(MK[m].ls + '.journal.v1') || [];
+      const S = window.__server && window.__server.markets && window.__server.markets[m];
+      const start = R.bookStart(m), book = S ? { accts: S.accts, open: S.open } : get(MK[m].ls + '.book.v3'), jr = S ? S.journal : (get(MK[m].ls + '.journal.v1') || []);
       TRADERS.forEach(id => {
         const a = book && book.accts && book.accts[id], realized = a ? a.equity : start;
         const open = ((book && book.open) || []).filter(p => p.bot === id);
@@ -56,6 +57,7 @@
     const pos = d.pos.length ? d.pos.map(p => `<tr class="pf-row" data-m="${p.market}" data-c="${esc(p.coin)}" title="open ${esc(p.coin)} chart"><td class="mut">${esc(p.ticket || '—')}</td><td><b style="color:${B[p.bot].color}">${B[p.bot].name}</b></td><td>${tag(p.market)} <b class="asset">${esc(p.coin)}</b></td><td><span class="side-pill ${p.side === 'LONG' ? 'L' : 'S'}">${p.side === 'LONG' ? '▲ LONG' : '▼ SHORT'}</span></td><td>${(+p.qty).toPrecision(4)}<small> ${esc(p.coin)}</small><br><small>${usd(p.notional, 0)}</small></td><td>${px(p.entry)}</td><td><b>${px(p.now)}</b></td><td class="dn">${px(p.stop)}</td><td class="up">${px(p.target)}</td><td class="${p.upnl >= 0 ? 'up' : 'dn'}"><b>${usd(p.upnl)}</b><br><small>${sgn(p.upct)}%</small></td><td class="mut">${t(p.opened)}</td></tr>`).join('') : '<tr class="ph"><td colspan="11">no open paper positions right now · bots open them after a debate when ATLAS allows</td></tr>';
     const cl = d.closed.slice(0, 12).map(j => `<tr class="pf-row" data-m="${j.market}" data-c="${esc(j.coin)}"><td class="mut">${esc(j.ticket || '#' + j.n)}</td><td><b style="color:${B[j.bot].color}">${B[j.bot].name}</b></td><td>${tag(j.market)} <b class="asset">${esc(j.coin)}</b></td><td class="${j.side === 'LONG' ? 'up' : 'dn'}">${j.side}</td><td>${px(j.entry)}</td><td>${px(j.exit)}</td><td class="${j.pnl >= 0 ? 'up' : 'dn'}"><b>${usd(j.pnl)}</b> <small>${sgn(j.r)}R</small></td><td class="mut">${esc(j.reason || '')}</td><td class="mut">${t(j.closedAt)}</td></tr>`).join('') || '<tr class="ph"><td colspan="9">no closed trades yet</td></tr>';
     root.innerHTML = `<div class="panel-head"><div class="ph-title big"><span class="ic spark">₿</span> PORTFOLIO · BALANCES &amp; POSITIONS</div><div class="paper-badge">PAPER · $${R.TOTAL_PER_BOT.toLocaleString('en-US')} per bot = ${R.ALLOC.crypto * 100}% crypto ($${R.bookStart('crypto').toLocaleString('en-US')}) + ${R.ALLOC.stocks * 100}% stocks ($${R.bookStart('stocks').toLocaleString('en-US')}) · ATLAS = risk officer, no book</div></div>
+      <div class="pf-src">${window.__server ? `🖥 shared server state · engine runs 24/7 on GitHub Actions · last run <b>${Math.max(0, Math.floor((Date.now() - window.__server.lastRun) / 60000))} min ago</b> (#${window.__server.runs}) · paper period since <b>${new Date(window.__server.startedAt).toLocaleString('en-GB', { hour12: false, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</b> · live prices for unrealized P&amp;L` : 'loading server state…'}</div>
       <div class="pf-wrap"><table class="pf-table"><thead><tr><th>BOT</th><th>TOTAL EQUITY</th><th>◆ CRYPTO BOOK (80%)</th><th>▲ STOCKS BOOK (20%)</th><th>REALIZED P&amp;L</th><th>UNREALIZED</th><th>% CHANGE</th></tr></thead><tbody>${rows}${tot}</tbody></table></div>
       <h3 class="pf-h">OPEN POSITIONS <span class="count">${d.pos.length}</span> <small>click a row to open its chart</small></h3>
       <div class="pf-wrap"><table class="pf-table"><thead><tr><th>ID</th><th>BOT</th><th>ASSET</th><th>SIDE</th><th>SIZE</th><th>ENTRY</th><th>NOW</th><th>STOP</th><th>TARGET</th><th>UNREALIZED</th><th>OPENED</th></tr></thead><tbody>${pos}</tbody></table></div>

@@ -454,3 +454,4 @@ footer .fine{color:var(--dim)}
 .pf-mk { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: .06em; }
 .pf-mk.crypto { color: #f7931a; border: 1px solid rgba(247,147,26,.5); } .pf-mk.stocks { color: #a78bfa; border: 1px solid rgba(167,139,250,.5); }
 .pf-h { margin: 16px 10px 6px; font-size: 13px; letter-spacing: .1em; color: #e6ecff; } .pf-h small { color: #7f8bb0; font-weight: 400; letter-spacing: 0; margin-left: 8px; }
+.pf-src { margin: 4px 10px 8px; font-size: 12px; color: #7f8bb0; } .pf-src b { color: #22d3ee; }

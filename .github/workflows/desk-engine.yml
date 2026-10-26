@@ -1,0 +1,39 @@
+name: desk-engine
+# Headless paper-trading engine for the five desk bots (NOVA, LUNA, ATLAS, ECHO, VEX).
+# Reads/writes desk.json on the `data` branch (so main / GitHub Pages is not rebuilt every run).
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub may delay scheduled runs; each run scans 1m candles since the last run
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: desk-engine
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: state
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Tests
+        run: for f in tests/*.test.js; do node "$f" || exit 1; done
+      - name: Engine run (paper only)
+        run: node engine/run.js state/desk.json
+      - name: Commit state to data branch
+        working-directory: state
+        run: |
+          git config user.name "desk-engine[bot]"
+          git config user.email "desk-engine@users.noreply.github.com"
+          git add desk.json
+          git diff --cached --quiet && { echo "no changes"; exit 0; }
+          git commit -q -m "engine: $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do git push -q origin HEAD:data && exit 0; sleep $((i*5)); git pull -q --rebase origin data || true; done
+          exit 1
