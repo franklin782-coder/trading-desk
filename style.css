@@ -388,3 +388,38 @@ footer .fine{color:var(--dim)}
 .shint{padding:6px 12px;font-size:9.5px;color:var(--dim);letter-spacing:.08em;border-bottom:1px solid var(--line)}
 @media (max-width:700px){.search{max-width:none;order:4;width:100%;flex-basis:100%}}
 .topbar{position:relative;z-index:65}
+
+/* ---------- risk desk: ATLAS breakers + journal ---------- */
+.riskdesk{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:12px;margin-top:12px}
+@media (max-width:1100px){.riskdesk{grid-template-columns:1fr}}
+.brk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px}
+.brk{border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.25);padding:8px 10px}
+.brk-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px}
+.brk-d{display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:10px;color:var(--mut)}
+.brk-st{font-size:9px;letter-spacing:.16em;padding:2px 7px;border-radius:999px;font-weight:800}
+.brk-st.OK{color:var(--up);border:1px solid rgba(43,245,160,.4);background:rgba(43,245,160,.08)}
+.brk-st.TRIP{color:var(--dn);border:1px solid rgba(255,77,109,.5);background:rgba(255,77,109,.12);box-shadow:0 0 12px rgba(255,77,109,.35);animation:pulse 1.6s ease-in-out infinite}
+.brk-st.WAIT{color:var(--am);border:1px solid rgba(251,191,36,.4)}
+.atlas-limits{padding:0 12px 8px;font-size:10px;color:var(--dim);line-height:1.5}
+.atlas-set{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:0 12px 10px;font-size:9px;color:var(--mut);letter-spacing:.08em}
+.atlas-set label{display:flex;flex-direction:column;gap:3px}
+.atlas-set input{width:84px;background:#0b1120;border:1px solid var(--line2);color:var(--tx);font-family:var(--mono);font-size:11px;padding:4px 6px;border-radius:6px}
+.atlas-set button,.j-btns button{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.4);color:var(--cy);font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:4px 9px;border-radius:6px;cursor:pointer}
+.j-btns{display:flex;gap:6px}
+.j-btns #jReset{color:var(--am);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.06)}
+.atlas-log{border-top:1px solid var(--line);padding:8px 12px;font-size:10px;color:var(--am);max-height:120px;overflow:auto}
+.atlas-log label{display:block;font-size:9px;color:var(--dim);letter-spacing:.16em;margin-bottom:4px}
+.mut{color:var(--mut)}
+.stats-wrap{overflow:auto}
+.stats-table .spk{width:90px;height:22px;display:block}
+.journal-list{max-height:340px;overflow:auto;padding:6px 12px 10px}
+.journal-list .empty{color:var(--dim);text-align:center;padding:18px;font-size:11px}
+.jr{border-top:1px solid var(--line);padding:7px 0;font-size:10.5px}
+.jr-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.jr-t{margin-left:auto}
+.jr-l{color:var(--tx);opacity:.85;margin-top:3px}
+.grade{font-size:9px;font-weight:800;padding:1px 6px;border-radius:5px;border:1px solid var(--line2)}
+.grade.gA{color:var(--up);border-color:rgba(43,245,160,.45)} .grade.gB{color:var(--cy);border-color:rgba(34,211,238,.45)}
+.grade.gC{color:var(--am);border-color:rgba(251,191,36,.45)} .grade.gD{color:var(--dn);border-color:rgba(255,77,109,.45)}
+.tkt{font-size:9px;letter-spacing:.1em;color:var(--vi);border:1px solid rgba(167,139,250,.45);border-radius:5px;padding:1px 6px;background:rgba(167,139,250,.08)}
+.levels.sz{margin-top:6px}

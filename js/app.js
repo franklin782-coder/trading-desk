@@ -92,7 +92,7 @@
     try { ws = new WebSocket(WSURL); } catch (e) { scheduleReconnect(); return; }
     ws.onopen = () => {
       wsBackoff = 1000; setFeed('WS live', 'ok'); log('WS', 'connected wss://api.hyperliquid.xyz/ws', '#2bf5a0');
-      for (const c of ALL()) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }])
+      for (const c of ALL()) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }, { type: 'l2Book', coin: c }])
         ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
       log('WS', `subscribed bbo/trades/candle/ctx × ${ALL().length} coins`, '#2bf5a0');
       stopPoll();
@@ -102,7 +102,8 @@
       let j; try { j = JSON.parse(ev.data); } catch (e) { return; }
       const d = j.data;
       switch (j.channel) {
-        case 'bbo': if (d && d.bbo && d.bbo[0] && d.bbo[1]) { tick(d.coin, (+d.bbo[0].px + +d.bbo[1].px) / 2); if (M[d.coin]) M[d.coin].exTs = d.time; } break;
+        case 'bbo': if (d && d.bbo && d.bbo[0] && d.bbo[1]) { tick(d.coin, (+d.bbo[0].px + +d.bbo[1].px) / 2); if (M[d.coin]) { M[d.coin].exTs = d.time; const bp = +d.bbo[0].px, ap = +d.bbo[1].px; M[d.coin].spreadPct = (ap - bp) / ((ap + bp) / 2) * 100; } } break;
+        case 'l2Book': if (d && M[d.coin] && d.levels) { M[d.coin].book = d.levels; M[d.coin].bookTs = Date.now(); } break;
         case 'trades':
           if (Array.isArray(d) && d.length) {
             const c = d[0].coin;
@@ -460,43 +461,153 @@
   function bump(e) { e.classList.remove('bump'); void e.offsetWidth; e.classList.add('bump'); }
   function toast(html) { const t = $('#toast'); t.innerHTML = html; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 4200); }
 
-  // ---------- paper book ----------
-  const paper = [], closed = [];
-  const NOTIONAL = 10000;
-  function openPaper(id, sig, view) {
+  // ---------- paper book (per-bot $10k accounts, risk-sized, persisted) ----------
+  // Sizing, limits and breakers live in js/risk.js (pure, unit-tested). This section only wires them to the UI.
+  const RK = window.Risk;
+  const START_EQ = 10000, REF_EQ = 10000, TRADERS = ['nova', 'luna', 'echo', 'vex'];
+  const LS_BOOK = 'td.book.v2', LS_JOURNAL = 'td.journal.v1', JOURNAL_MAX = 3000;
+  const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* quota / private mode */ } };
+  const book = lsGet(LS_BOOK, null) || { accts: {}, open: [], ticketDay: '', ticketN: 0, settings: {} };
+  TRADERS.forEach(id => { if (!book.accts[id]) book.accts[id] = { equity: START_EQ, day: '', dayStart: START_EQ, curve: [[Date.now(), START_EQ]] }; });
+  const journal = lsGet(LS_JOURNAL, []);
+  const paper = book.open, closed = journal; // closed = journal (oldest→newest)
+  let limits = RK.effectiveLimits(book.settings);
+  let journalDirty = true;
+  const saveBook = () => lsSet(LS_BOOK, book);
+  const botTrades = id => journal.filter(j => j.bot === id);
+  function mtm(p) { const m = M[p.coin]; const px = m && m.price; if (!px) return 0; return (px - p.entry) * (p.side === 'LONG' ? 1 : -1) * p.qty; }
+  function equityNow(id) { return book.accts[id].equity + paper.filter(p => p.bot === id).reduce((a, p) => a + mtm(p), 0); }
+  function rollDay(id) { const a = book.accts[id], k = RK.dayKey(Date.now()); if (a.day !== k) { a.day = k; a.dayStart = a.equity; } }
+  function depthFor(coin) { const m = M[coin]; if (!m || !m.book || Date.now() - (m.bookTs || 0) > 30000) return null; return RK.bookDepth(m.book, limits.depthBandPct); }
+  function breakersFor(id, coin) {
+    if (id) rollDay(id);
+    const a = id ? book.accts[id] : null;
+    return RK.checkBreakers({ now: Date.now(), equity: id ? equityNow(id) : 1, dayStartEquity: id ? a.dayStart : 1,
+      trades: id ? botTrades(id).map(j => ({ closedAt: j.closedAt, r: j.r })) : [], lastFeedTs: lastMsg, depth: depthFor(coin), limits });
+  }
+  const atlasLog = [];
+  function atlasVeto(who, coin, fired, why) {
+    const line = `${hhmmss()} VETO ${who} ${coin} · rule ${fired.join('+')}${why ? ' · ' + why : ''}`;
+    atlasLog.unshift(line); if (atlasLog.length > 8) atlasLog.pop();
+    log('ATLAS', line, '#fbbf24');
+  }
+  function openPaper(id, sig, view, atlasRisk) {
     if (paper.some(p => p.bot === id && p.coin === sig.coin)) return;
     if (paper.filter(p => p.bot === id).length >= 2) return;
-    const st = E.stopsFor(sig, view.side);
-    const p = { id: id + sig.coin + Date.now(), bot: id, coin: sig.coin, side: view.side, entry: sig.price, stop: st.stop, target: st.target, opened: Date.now(), isNew: true };
-    paper.push(p);
-    termPush(id, `> paper ${p.side.toLowerCase()} ${p.coin} @ ${E.fmtPx(p.entry)} (sim)`, 'cmd');
-    log('PAPER', `${BOT[id].name} opens PAPER ${p.side} ${p.coin} @ ${E.fmtPx(p.entry)}`, BOT[id].color);
+    const br = breakersFor(id, sig.coin);
+    if (!br.allowed) { atlasVeto(BOT[id].name, sig.coin, br.fired); termPush(id, `> ATLAS blocked entry: ${br.fired.join(', ')}`, 'res'); return; }
+    const st = E.stopsFor(sig, view.side), dir = view.side === 'LONG' ? 1 : -1;
+    const half = M[sig.coin].spreadPct ? M[sig.coin].spreadPct / 200 : 0;
+    const entry = sig.price * (1 + dir * (limits.slippagePct + half));
+    const trades = botTrades(id), scale = (atlasRisk === 'CAUTION' ? 0.5 : 1) * RK.riskScaleFor(trades);
+    const openRisk = paper.filter(p => p.bot === id).reduce((a, p) => a + p.riskUsd, 0);
+    const sz = RK.sizePosition({ equity: equityNow(id), entry, stop: st.stop, openRiskUsd: openRisk, riskScale: scale, limits });
+    if (!(sz.qty > 0)) { atlasVeto(BOT[id].name, sig.coin, ['TOTAL_OPEN_RISK'], 'no risk budget left'); return; }
+    const p = { id: id + sig.coin + Date.now(), bot: id, coin: sig.coin, side: view.side, entry, mid0: sig.price, stop: st.stop, target: st.target, qty: sz.qty, notional: sz.notional, riskUsd: sz.riskUsd, riskPct: sz.riskPct, lev: sz.leverage, cappedBy: sz.cappedBy, scale, atlas: atlasRisk, why: view.why, conv: view.conv, fees: sz.notional * limits.feeRate, opened: Date.now(), isNew: true };
+    paper.push(p); saveBook();
+    termPush(id, `> paper ${p.side.toLowerCase()} ${p.coin} qty ${p.qty.toPrecision(4)} @ ${E.fmtPx(p.entry)} risk $${p.riskUsd.toFixed(0)} (sim)`, 'cmd');
+    log('PAPER', `${BOT[id].name} opens PAPER ${p.side} ${p.coin} @ ${E.fmtPx(p.entry)} · ${(p.riskPct * 100).toFixed(2)}% risk · ${p.lev.toFixed(2)}x${scale < 1 ? ' · size×' + scale : ''}`, BOT[id].color);
   }
   function closePaper(p, reason) {
-    const px = M[p.coin].price; const pnl = E.ideaPnl(p, px);
+    const mid = M[p.coin] && M[p.coin].price; if (!mid) return;
+    const dir = p.side === 'LONG' ? 1 : -1, half = M[p.coin].spreadPct ? M[p.coin].spreadPct / 200 : 0;
+    const exit = mid * (1 - dir * (limits.slippagePct + half));
+    const fees = p.fees + p.qty * exit * limits.feeRate;
+    const slippageUsd = p.qty * (Math.abs(p.entry - p.mid0) + Math.abs(mid - exit));
+    const rv = RK.reviewTrade({ side: p.side, entry: p.entry, exit, stop: p.stop, target: p.target, qty: p.qty, riskUsd: p.riskUsd, fees, reason, atlas: p.atlas, sizedOk: p.riskPct <= RK.HARD.riskPerTrade + 1e-9 });
     paper.splice(paper.indexOf(p), 1);
-    closed.unshift({ bot: p.bot, coin: p.coin, side: p.side, pnl, usd: pnl / 100 * NOTIONAL, reason });
-    if (closed.length > 40) closed.pop();
-    log('PAPER', `${BOT[p.bot].name} closes ${p.side} ${p.coin} ${E.sg(pnl)} (${reason})`, pnl >= 0 ? '#2bf5a0' : '#ff4d6d');
-    termPush(p.bot, `> close paper ${p.coin}: ${E.sg(pnl)} [${reason}]`, 'res');
+    const a = book.accts[p.bot]; a.equity += rv.pnl; a.curve.push([Date.now(), a.equity]); if (a.curve.length > 500) a.curve.splice(0, a.curve.length - 500);
+    const j = { n: (journal.length ? journal[journal.length - 1].n : 0) + 1, bot: p.bot, coin: p.coin, side: p.side, ticket: p.ticket || null,
+      openedAt: p.opened, closedAt: Date.now(), entry: p.entry, exit, stop: p.stop, target: p.target, qty: p.qty, notional: p.notional,
+      riskUsd: p.riskUsd, riskPct: p.riskPct, atlas: p.atlas, scale: p.scale, reason, fees, slippageUsd, pnl: rv.pnl, pct: rv.pnl / p.notional * 100, r: rv.r,
+      process: rv.process, outcome: rv.outcome, lesson: rv.lesson, why: p.why, equityAfter: a.equity };
+    journal.push(j); if (journal.length > JOURNAL_MAX) journal.splice(0, journal.length - JOURNAL_MAX);
+    lsSet(LS_JOURNAL, journal); saveBook(); journalDirty = true;
+    log('PAPER', `${BOT[p.bot].name} closes ${p.side} ${p.coin} ${rv.r >= 0 ? '+' : ''}${rv.r.toFixed(2)}R $${rv.pnl.toFixed(2)} (${reason}) · process ${rv.process} / outcome ${rv.outcome}`, rv.pnl >= 0 ? '#2bf5a0' : '#ff4d6d');
+    termPush(p.bot, `> close paper ${p.coin}: ${rv.r.toFixed(2)}R [${reason}] · ${rv.lesson}`, 'res');
   }
   function renderPaper() {
     for (const p of paper.slice()) {
-      const px = M[p.coin].price, st = E.ideaStatus(p, px);
+      const m = M[p.coin]; if (!m || !m.price) continue;
+      const st = E.ideaStatus(p, m.price);
       if (st === 'TARGET') closePaper(p, 'target'); else if (st === 'STOPPED') closePaper(p, 'stop'); else if (Date.now() - p.opened > 15 * 60e3) closePaper(p, 'time');
     }
     const body = $('#paperBody');
     if (!paper.length) body.innerHTML = '<tr class="ph"><td colspan="6">no open paper positions</td></tr>';
     else body.innerHTML = paper.map(p => {
-      const px = M[p.coin].price, pnl = E.ideaPnl(p, px), b = BOT[p.bot];
-      const r = `<tr class="${p.isNew ? 'new' : ''}"><td><span class="bn">${avatar(b, 'av')}<span style="color:${b.color}">${b.name}</span></span></td><td><b>${p.coin}</b></td><td class="${p.side === 'LONG' ? 'up' : 'dn'}">${p.side}</td><td>${E.fmtPx(p.entry)}</td><td>${E.fmtPx(px)}</td><td class="${pnl >= 0 ? 'up' : 'dn'}">${E.sg(pnl)}<br><small>${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl / 100 * NOTIONAL).toFixed(2)}</small></td></tr>`;
-      p.isNew = false; return r;
+      const px = M[p.coin] && M[p.coin].price, u = mtm(p), r = p.riskUsd ? u / p.riskUsd : 0, b = BOT[p.bot];
+      const row = `<tr class="${p.isNew ? 'new' : ''}"><td><span class="bn">${avatar(b, 'av')}<span style="color:${b.color}">${b.name}</span></span></td><td><b>${p.coin}</b><br><small class="mut">${p.lev.toFixed(2)}x · risk $${p.riskUsd.toFixed(0)}</small></td><td class="${p.side === 'LONG' ? 'up' : 'dn'}">${p.side}</td><td>${E.fmtPx(p.entry)}<br><small class="dn">${E.fmtPx(p.stop)}</small></td><td>${E.fmtPx(px)}</td><td class="${u >= 0 ? 'up' : 'dn'}">${r >= 0 ? '+' : ''}${r.toFixed(2)}R<br><small>${u >= 0 ? '+' : '-'}$${Math.abs(u).toFixed(2)}</small></td></tr>`;
+      p.isNew = false; return row;
     }).join('');
-    $('#paperClosed').innerHTML = closed.length ? closed.slice(0, 12).map(c => `<span style="border-color:${BOT[c.bot].color}44"><span style="color:${BOT[c.bot].color}">${BOT[c.bot].name}</span> ${c.coin} ${c.side[0]} <b class="${c.pnl >= 0 ? 'up' : 'dn'}">${E.sg(c.pnl)}</b></span>`).join('') : '—';
-    const unreal = paper.reduce((a, p) => a + E.ideaPnl(p, M[p.coin].price) / 100 * NOTIONAL, 0);
-    const real = closed.reduce((a, c) => a + c.usd, 0), tot = unreal + real;
-    const s = $('#stPnl'); s.innerHTML = `<span class="${tot >= 0 ? 'up' : 'dn'}">${tot >= 0 ? '+' : '-'}$${Math.abs(tot).toFixed(2)}</span>`;
-    $('#stWin').textContent = closed.length ? `${Math.round(closed.filter(c => c.pnl > 0).length / closed.length * 100)}% (${closed.length})` : '—';
+    const last = journal.slice(-12).reverse();
+    $('#paperClosed').innerHTML = last.length ? last.map(c => `<span style="border-color:${BOT[c.bot].color}44"><span style="color:${BOT[c.bot].color}">${BOT[c.bot].name}</span> ${c.coin} ${c.side[0]} <b class="${c.r >= 0 ? 'up' : 'dn'}">${c.r >= 0 ? '+' : ''}${c.r.toFixed(2)}R</b></span>`).join('') : '—';
+    const tot = TRADERS.reduce((a, id) => a + equityNow(id) - START_EQ, 0);
+    $('#stPnl').innerHTML = `<span class="${tot >= 0 ? 'up' : 'dn'}">${tot >= 0 ? '+' : '-'}$${Math.abs(tot).toFixed(2)}</span>`;
+    $('#stWin').textContent = journal.length ? `${Math.round(journal.filter(c => c.r > 0).length / journal.length * 100)}% (${journal.length})` : '—';
+    renderAtlas();
+    if (journalDirty) { journalDirty = false; renderJournal(); }
+  }
+
+  // ---------- ATLAS circuit breakers panel ----------
+  function renderAtlas() {
+    const coin = focus.coin, desk = breakersFor(null, coin);
+    const daily = TRADERS.map(id => ({ id, b: breakersFor(id, coin) }));
+    const dl = daily.map(x => ({ id: x.id, r: x.b.rules.find(r => r.id === 'DAILY_LOSS') })), ls = daily.map(x => ({ id: x.id, r: x.b.rules.find(r => r.id === 'LOSS_STREAK') }));
+    const pill = s => `<span class="brk-st ${s}">${s === 'OK' ? 'OK' : s === 'TRIP' ? 'TRIPPED' : 'NO DATA'}</span>`;
+    const worst = arr => arr.some(x => x.r.status === 'TRIP') ? 'TRIP' : 'OK';
+    const per = arr => arr.map(x => `<span class="${x.r.status === 'TRIP' ? 'dn' : ''}"><b style="color:${BOT[x.id].color}">${BOT[x.id].name}</b> ${esc(x.r.detail)}</span>`).join('');
+    const liq = desk.rules.find(r => r.id === 'LIQUIDITY'), stale = desk.rules.find(r => r.id === 'STALE_FEED');
+    $('#atlasRules').innerHTML = `
+      <div class="brk"><div class="brk-h"><b>Daily loss cap</b>${pill(worst(dl))}</div><div class="brk-d">${per(dl)}</div></div>
+      <div class="brk"><div class="brk-h"><b>Loss-streak pause</b>${pill(worst(ls))}</div><div class="brk-d">${per(ls)}</div></div>
+      <div class="brk"><div class="brk-h"><b>Liquidity · ${esc(coin)}</b>${pill(liq.status)}</div><div class="brk-d"><span>${esc(liq.detail)}</span></div></div>
+      <div class="brk"><div class="brk-h"><b>Stale feed</b>${pill(stale.status)}</div><div class="brk-d"><span>${esc(stale.detail)}</span></div></div>`;
+    $('#atlasLimits').textContent = `risk/trade ${(limits.riskPerTrade * 100).toFixed(2)}% · open risk ≤ ${(limits.totalOpenRisk * 100).toFixed(1)}% · lev ≤ ${limits.maxLeverage}x · day stop -${(limits.dailyLoss * 100).toFixed(1)}% · pause after ${limits.maxConsecLosses} losses (${limits.pauseMin}m) · fees ${(limits.feeRate * 100).toFixed(3)}%/side + slip ${(limits.slippagePct * 100).toFixed(2)}%`;
+    $('#atlasLog').innerHTML = atlasLog.length ? atlasLog.map(l => `<div>${esc(l)}</div>`).join('') : '<div class="mut">no vetoes yet</div>';
+  }
+  function buildSettings() {
+    const f = $('#atlasSettings'); if (!f) return;
+    const fields = [['riskPerTrade', 'Risk / trade %', 100, RK.HARD.riskPerTrade], ['dailyLoss', 'Daily loss stop %', 100, RK.HARD.dailyLoss], ['maxConsecLosses', 'Pause after N losses', 1, RK.HARD.maxConsecLosses], ['maxLeverage', 'Max leverage x', 1, RK.HARD.maxLeverage]];
+    f.innerHTML = fields.map(([k, l, m, h]) => `<label>${l}<input type="number" step="any" min="0" data-k="${k}" data-m="${m}" value="${+(limits[k] * m).toFixed(3)}" title="hard max ${h * m}"></label>`).join('') + '<button type="button" id="setReset">defaults</button><small class="mut">can only tighten · hard caps are in code</small>';
+    f.querySelectorAll('input').forEach(i => i.onchange = () => {
+      const v = parseFloat(i.value); if (isFinite(v)) book.settings[i.dataset.k] = v / +i.dataset.m;
+      limits = RK.effectiveLimits(book.settings); saveBook(); buildSettings();
+    });
+    $('#setReset').onclick = () => { book.settings = {}; limits = RK.effectiveLimits(); saveBook(); buildSettings(); };
+  }
+
+  // ---------- journal & per-bot stats ----------
+  function spark(curve, color) {
+    const pts = curve.slice(-80); if (pts.length < 2) return '<svg class="spk" viewBox="0 0 100 24"></svg>';
+    const ys = pts.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), rg = hi - lo || 1;
+    const d = pts.map((p, i) => `${(i / (pts.length - 1) * 100).toFixed(1)},${(22 - (p[1] - lo) / rg * 20).toFixed(1)}`).join(' ');
+    return `<svg class="spk" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${d}"/></svg>`;
+  }
+  const fR = x => x == null || !isFinite(x) ? '—' : (x >= 0 ? '+' : '') + x.toFixed(2) + 'R';
+  function renderJournal() {
+    $('#botStats').innerHTML = `<tr><th>BOT</th><th>EQUITY</th><th>TRADES</th><th>WIN</th><th>AVG R</th><th>EXPECTANCY</th><th>LAST 20</th><th>PF</th><th>CURVE</th></tr>` + TRADERS.map(id => {
+      const s = RK.stats(botTrades(id)), b = BOT[id], eq = book.accts[id].equity, scale = RK.riskScaleFor(botTrades(id));
+      return `<tr><td><span class="bn">${avatar(b, 'av')}<span style="color:${b.color}">${b.name}</span></span>${scale < 1 ? '<small class="warn" title="negative expectancy over last 20 trades → half risk"> probation</small>' : ''}</td>
+        <td class="${eq >= START_EQ ? 'up' : 'dn'}">$${eq.toFixed(2)}</td><td>${s.n}</td><td>${s.winRate == null ? '—' : Math.round(s.winRate * 100) + '%'}</td>
+        <td class="${s.avgR >= 0 ? 'up' : 'dn'}">${fR(s.avgR)}</td><td class="${s.expectancy >= 0 ? 'up' : 'dn'}">${fR(s.expectancy)}</td><td class="${s.recentExp >= 0 ? 'up' : 'dn'}">${fR(s.recentExp)}</td>
+        <td>${s.pf == null ? '—' : s.pf === Infinity ? '∞' : s.pf.toFixed(2)}</td><td>${spark(book.accts[id].curve, b.color)}</td></tr>`;
+    }).join('');
+    const rows = journal.slice(-30).reverse();
+    $('#journalList').innerHTML = rows.length ? rows.map(j => `<div class="jr"><div class="jr-h"><span class="mut">#${j.n}</span><b style="color:${BOT[j.bot].color}">${BOT[j.bot].name}</b><b>${esc(j.coin)}</b><span class="${j.side === 'LONG' ? 'up' : 'dn'}">${j.side}</span>${j.ticket ? `<span class="tkt">${esc(j.ticket)}</span>` : ''}<b class="${j.r >= 0 ? 'up' : 'dn'}">${fR(j.r)}</b><span class="mut">$${j.pnl.toFixed(2)} · fees $${j.fees.toFixed(2)} · slip ~$${j.slippageUsd.toFixed(2)} · ${esc(j.reason)}</span><span class="grade g${j.process}" title="process grade">P ${j.process}</span><span class="grade g${j.outcome}" title="outcome grade">O ${j.outcome}</span><span class="mut jr-t">${new Date(j.closedAt).toLocaleString('en-GB', { hour12: false })}</span></div><div class="jr-l">💡 ${esc(j.lesson)}</div></div>`).join('') : '<div class="empty">no closed paper trades yet · every closed trade is reviewed here</div>';
+    $('#journalCount').textContent = journal.length;
+  }
+  function exportJournal() {
+    const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), note: 'paper trades only', limits, accounts: book.accts, journal }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `trading-desk-journal-${RK.dayKey(Date.now())}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function resetBook() {
+    if (!confirm('Reset paper accounts to $10k each and clear open paper positions? The journal is kept (append-only).')) return;
+    paper.splice(0); TRADERS.forEach(id => book.accts[id] = { equity: START_EQ, day: '', dayStart: START_EQ, curve: [[Date.now(), START_EQ]] }); saveBook(); journalDirty = true;
+  }
+  function nextTicket() {
+    const k = RK.dayKey(Date.now()); if (book.ticketDay !== k) { book.ticketDay = k; book.ticketN = 0; }
+    book.ticketN++; saveBook(); return RK.ticketId(Date.now(), book.ticketN);
   }
 
   // ---------- ideas for you ----------
@@ -510,8 +621,9 @@
     const reasons = idea.reasons.map(r => `<li>${avatar(BOT[r.bot], 'av')}<span><b style="color:${BOT[r.bot].color}">${BOT[r.bot].name}:</b> ${esc(r.why)}</span></li>`).join('')
       + idea.dissent.map(r => `<li class="dis">${avatar(BOT[r.bot], 'av')}<span><b style="color:${BOT[r.bot].color}">${BOT[r.bot].name} disagrees:</b> ${esc(r.why)}</span></li>`).join('');
     const riskPct = Math.abs(idea.entry - idea.stop) / idea.entry * 100;
-    card.innerHTML = `<div class="ih"><span class="coin" style="color:${COIN_COLOR[idea.coin]}">${idea.coin}</span><span class="side-pill ${L ? 'L' : 'S'}">${L ? '▲ LONG' : '▼ SHORT'}</span><span class="conf ${idea.confidence}">CONFIDENCE<b>${idea.confidence}</b></span></div>
+    card.innerHTML = `<div class="ih"><span class="tkt">${idea.ticket || ''}</span><span class="coin" style="color:${COIN_COLOR[idea.coin]}">${idea.coin}</span><span class="side-pill ${L ? 'L' : 'S'}">${L ? '▲ LONG' : '▼ SHORT'}</span><span class="conf ${idea.confidence}">CONFIDENCE<b>${idea.confidence}</b></span></div>
       <div class="levels"><div><label>ENTRY</label><b>${E.fmtPx(idea.entry)}</b></div><div><label>STOP</label><b class="dn">${E.fmtPx(idea.stop)}</b></div><div><label>TARGET</label><b class="up">${E.fmtPx(idea.target)}</b></div><div><label>R:R</label><b>1:${idea.rr}</b></div></div>
+      ${idea.size ? `<div class="levels sz"><div><label>SIZE / $10K</label><b>${idea.size.qty.toPrecision(4)}</b></div><div><label>NOTIONAL</label><b>$${idea.size.notional.toFixed(0)}</b></div><div><label>RISK</label><b class="dn">$${idea.size.riskUsd.toFixed(0)} · ${(idea.size.riskPct * 100).toFixed(2)}%</b></div><div><label>LEVERAGE</label><b>${idea.size.leverage.toFixed(2)}x</b></div></div>` : ''}
       <div class="prog"><span class="entry"></span><span class="now" data-r="now"></span></div>
       <div class="prog-l"><span>STOP −${riskPct.toFixed(2)}%</span><span>ENTRY</span><span>TARGET +${(riskPct * 2).toFixed(2)}%</span></div>
       <div class="live-pnl"><span>since idea · <span data-r="age">0s</span> · now <b data-r="px" style="font-size:11px">${E.fmtPx(idea.entry)}</b></span><b data-r="pnl">+0.00%</b></div>
@@ -626,7 +738,7 @@
       const v = views[id];
       const existing = paper.find(p => p.bot === id && p.coin === coin);
       if (existing && v.side !== 'FLAT' && v.side !== existing.side) closePaper(existing, 'flip');
-      if (v.side !== 'FLAT' && v.conv >= 0.5 && views.atlas.risk !== 'VETO') openPaper(id, sig, v);
+      if (v.side !== 'FLAT' && v.conv >= 0.5) { if (views.atlas.risk === 'VETO') { if (!existing) atlasVeto(BOT[id].name, coin, [views.atlas.rule || 'VOLATILITY'], views.atlas.why); } else openPaper(id, sig, v, views.atlas.risk); }
     }
     // idea for the user
     stage(3, `consensus check on <b>${coin}</b> · ATLAS risk ${views.atlas.risk}`);
@@ -636,11 +748,15 @@
     BOTS.forEach(b => setLevel(b.id, views[b.id], coin));
     renderDecision(coin, views, idea && !ideas.some(i => i.coin === coin && i.status === 'OPEN') && Date.now() - lastIdeaAt > 35000 ? idea : null, compMs, performance.now() - cyc0);
     await sleep(700);
-    if (idea && !ideas.some(i => i.coin === coin && i.status === 'OPEN') && Date.now() - lastIdeaAt > 35000) {
+    const deskBr = idea ? breakersFor(null, coin) : null;
+    if (idea && !deskBr.allowed) atlasVeto('desk idea', coin, deskBr.fired);
+    if (idea && deskBr.allowed && !ideas.some(i => i.coin === coin && i.status === 'OPEN') && Date.now() - lastIdeaAt > 35000) {
+      idea.ticket = nextTicket();
+      idea.size = RK.sizePosition({ equity: REF_EQ, entry: idea.entry, stop: idea.stop, riskScale: idea.risk === 'CAUTION' ? 0.5 : 1, limits });
       lastIdeaAt = Date.now();
       const presenter = idea.agree.includes(bot.id) && bot.id !== 'atlas' ? bot.id : idea.agree[0];
       await typing(presenter, 1500);
-      post(presenter, `📌 Desk idea for you: ${idea.side} ${coin} @ ${E.fmtPx(idea.entry)}, stop ${E.fmtPx(idea.stop)}, target ${E.fmtPx(idea.target)} (1:2). Agreed: ${idea.agree.map(i => BOT[i].name).join(', ')}${idea.dissent.length ? '. Dissent: ' + idea.dissent.map(d => BOT[d.bot].name).join(', ') : ''}. Idea only, not advice.`, { idea: true });
+      post(presenter, `📌 ${idea.ticket}: ${idea.side} ${coin} @ ${E.fmtPx(idea.entry)}, stop ${E.fmtPx(idea.stop)}, target ${E.fmtPx(idea.target)} (1:2), size ${idea.size.qty.toPrecision(4)} ${coin} ≈ $${idea.size.notional.toFixed(0)} per $10k (risk $${idea.size.riskUsd.toFixed(0)}). Agreed: ${idea.agree.map(i => BOT[i].name).join(', ')}${idea.dissent.length ? '. Dissent: ' + idea.dissent.map(d => BOT[d.bot].name).join(', ') : ''}. Idea only, not advice.`, { idea: true });
       addIdea(idea);
       stage(4, `<b style="color:var(--am)">IDEA PUBLISHED</b> · ${idea.side} ${coin}`);
       BOTS.forEach(b => sendPacket(presenter, b.id, 'IDEA'));
@@ -867,7 +983,7 @@
       M[name] = { coin: name, candles: [], secs: [], cur: null, price: null, prev: null, ctx: {}, seeded: false, hist: false };
       EXTRA.push(name); COIN_COLOR[name] = COIN_COLOR[name] || EXTRA_PAL[(EXTRA.length - 1) % EXTRA_PAL.length];
       const u = UNIVERSE.find(x => x.name === name); if (u) { M[name].ctx = u.ctx; if (u.ctx.midPx) M[name].price = +u.ctx.midPx; }
-      if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: name }, { type: 'trades', coin: name }, { type: 'candle', coin: name, interval: '1m' }, { type: 'activeAssetCtx', coin: name }]) ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
+      if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: name }, { type: 'trades', coin: name }, { type: 'candle', coin: name, interval: '1m' }, { type: 'activeAssetCtx', coin: name }, { type: 'l2Book', coin: name }]) ws.send(JSON.stringify({ method: 'subscribe', subscription: sub }));
       log('WS', `subscribed ${name} (bbo/trades/candle/ctx)`, '#2bf5a0');
       loadHistory(name).then(() => { if (focus.coin === name) setFocus(name); renderRsi(); drawHeat(); });
     }
@@ -879,7 +995,7 @@
   }
   function removeCoin(c) {
     const i = EXTRA.indexOf(c); if (i < 0) return; EXTRA.splice(i, 1);
-    if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
+    if (ws && ws.readyState === 1) for (const sub of [{ type: 'bbo', coin: c }, { type: 'trades', coin: c }, { type: 'candle', coin: c, interval: '1m' }, { type: 'activeAssetCtx', coin: c }, { type: 'l2Book', coin: c }]) ws.send(JSON.stringify({ method: 'unsubscribe', subscription: sub }));
     delete M[c];
   }
   function buildSearch() {
@@ -915,7 +1031,9 @@
   }
 
   function init() {
-    buildTickers(); buildMinis(); buildBots(); buildFocus(); buildBotStatus(); buildSearch(); requestAnimationFrame(rafLoop);
+    buildTickers(); buildMinis(); buildSettings(); renderJournal();
+    $('#jExport').onclick = exportJournal; $('#jReset').onclick = resetBook;
+    setTimeout(() => paper.forEach(p => { if (!M[p.coin]) { try { addCoin(p.coin); } catch (e) { } } }), 4000); buildBots(); buildFocus(); buildBotStatus(); buildSearch(); requestAnimationFrame(rafLoop);
     if (!LWC) log('ERR', 'chart library failed to load', '#ff4d6d');
     document.querySelectorAll('#tfSwitch button').forEach(b => b.onclick = () => setFocus(focus.coin, b.dataset.tf));
     log('BOOT', 'AI trading desk starting', '#a78bfa');
@@ -926,7 +1044,7 @@
     setInterval(() => { renderRsi(); drawRadar(); drawHeat(); }, 3000);
     setInterval(idleTerm, 2600);
     deskLoop();
-    window.__desk = { M, ideas, paper, closed, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
+    window.__desk = { M, ideas, paper, closed, book, journal, get limits() { return limits; }, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

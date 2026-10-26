@@ -195,15 +195,15 @@
     },
     {
       id: 'atlas', name: 'ATLAS', color: '#fbbf24', shape: 'square', role: 'Risk Manager',
-      rule: 'Max risk 1R per idea, stop = 1.5×ATR. σ too high or crowded funding → veto.',
+      rule: 'Size = 1% of current equity / worst-case loss. Stop 1.5×ATR. Veto on hot vol, daily loss cap, loss streak, thin book or stale feed.',
       analyze(s) {
         const lines = [`> atr(14,1m)=${fmtPx(s.atr)} (${f2(s.atrPct)}%)`, `> σ(1m ret)=${f2(s.vol)}%  funding=${s.funding == null ? '—' : s.funding.toFixed(4) + '%/h'}`];
-        let risk = 'OK', why;
-        if (s.vol > 0.45 || s.atrPct > 0.7) { risk = 'VETO'; why = `volatility is hot (σ ${f2(s.vol)}%, ATR ${f2(s.atrPct)}%), stops would get run`; }
+        let risk = 'OK', why, rule = null;
+        if (s.vol > 0.45 || s.atrPct > 0.7) { risk = 'VETO'; rule = s.vol > 0.45 ? 'VOL_SIGMA' : 'ATR_WIDE'; why = `volatility is hot (σ ${f2(s.vol)}%, ATR ${f2(s.atrPct)}%), stops would get run`; }
         else if (s.vol > 0.25 || (s.funding != null && Math.abs(s.funding) > 0.003)) { risk = 'CAUTION'; why = `elevated risk (σ ${f2(s.vol)}%, funding ${s.funding == null ? '—' : s.funding.toFixed(4)}%/h), half size`; }
         else why = `risk is fine: ATR ${f2(s.atrPct)}%, σ ${f2(s.vol)}%`;
         lines.push(`> risk check: ${risk}`);
-        return { side: 'FLAT', conv: 0, risk, why, lines };
+        return { side: 'FLAT', conv: 0, risk, rule, why, lines };
       },
       say: {
         OK: ['Risk check {C}: {why}. Stop at 1.5×ATR ≈ {stop}. Approved ✅', '{C}: {why}. If we do it, size so a stop at {stop} = 1R.'],

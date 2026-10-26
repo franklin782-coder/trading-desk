@@ -142,14 +142,29 @@
     <div class="ideas-list" id="ideas"><div class="empty" id="ideasEmpty"><div class="radar"></div>Bots are debating… first idea incoming</div></div>
   </div>
   <div class="panel paper">
-    <div class="panel-head"><div class="ph-title"><span class="ic">📄</span> PAPER BOOK</div><div class="paper-badge">PAPER · $10K notional each · not real</div></div>
+    <div class="panel-head"><div class="ph-title"><span class="ic">📄</span> PAPER BOOK</div><div class="paper-badge">PAPER · $10K account per bot · 1% risk sizing · not real</div></div>
     <div class="paper-wrap">
       <table class="paper-table">
-        <thead><tr><th>BOT</th><th>COIN</th><th>SIDE</th><th>ENTRY</th><th>NOW</th><th>P&amp;L</th></tr></thead>
+        <thead><tr><th>BOT</th><th>COIN</th><th>SIDE</th><th>ENTRY / STOP</th><th>NOW</th><th>P&amp;L (R)</th></tr></thead>
         <tbody id="paperBody"><tr class="ph"><td colspan="6">no paper positions yet</td></tr></tbody>
       </table>
     </div>
     <div class="paper-closed"><label>CLOSED</label><div id="paperClosed" class="closed-list">—</div></div>
+  </div>
+</section>
+
+<section class="riskdesk">
+  <div class="panel atlas-panel">
+    <div class="panel-head"><div class="ph-title"><span class="ic" style="color:var(--am)">■</span> ATLAS · CIRCUIT BREAKERS</div><div class="ph-note">any TRIPPED rule blocks new entries</div></div>
+    <div class="brk-grid" id="atlasRules"></div>
+    <div class="atlas-limits" id="atlasLimits"></div>
+    <form class="atlas-set" id="atlasSettings" onsubmit="return false"></form>
+    <div class="atlas-log"><label>VETO LOG</label><div id="atlasLog"></div></div>
+  </div>
+  <div class="panel journal-panel">
+    <div class="panel-head"><div class="ph-title"><span class="ic">📓</span> JOURNAL &amp; LESSONS <span class="count" id="journalCount">0</span></div><div class="j-btns"><button type="button" id="jExport">⤓ EXPORT JSON</button><button type="button" id="jReset" title="reset paper accounts (journal is kept)">RESET BOOK</button></div></div>
+    <div class="stats-wrap"><table class="paper-table stats-table" id="botStats"></table></div>
+    <div class="journal-list" id="journalList"></div>
   </div>
 </section>
 
@@ -165,6 +180,7 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/risk.js"></script>
 <script src="js/search.js"></script>
 <script src="js/app.js"></script>
 </body>

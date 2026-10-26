@@ -1,6 +1,6 @@
 # AI Trading Desk
 
-**Live:** https://jack10147.github.io/trading-desk/
+**Live:** https://franklin782-coder.github.io/trading-desk/
 
 An animated, terminal-style dashboard where five rule-based bot personas watch **real, live crypto charts** and debate trade ideas.
 
@@ -12,7 +12,15 @@ An animated, terminal-style dashboard where five rule-based bot personas watch *
 - **Bots:** NOVA (momentum), LUNA (mean reversion), ATLAS (risk manager), ECHO (flow & sentiment), VEX (contrarian). Each one computes real indicators (RSI14, EMA9/21 crosses, Bollinger z, ATR, σ of returns, volume spikes, taker-flow imbalance, funding) and turns them into chat messages through personality templates.
 - **Ideas for you:** when the bots reach consensus and ATLAS doesn't veto, the desk publishes an idea with entry, stop (1.5×ATR), target (2R), reasoning, and which bots agreed. Each idea is tracked live.
 - **Ops widgets:** a desk-cycle pipeline (SCAN → ANALYZE → DEBATE → CONSENSUS → IDEA), a bot network graph with animated particle links, a session bus showing bot-to-bot handoff packets, a bot status panel (state and conviction), a signal radar (momentum, trend, volatility, volume, flow, RSI), a coin × timeframe % change heatmap, and a latest-decision box (confidence, compute time, feed lag). All of it is computed from live data.
-- **Paper book:** hypothetical $10k positions per bot, marked to live prices.
+- **Paper book:** each trading bot has its own hypothetical $10k account (persisted in `localStorage`), marked to live prices.
+- **Risk module (`js/risk.js`, pure + unit-tested):** size = 1% of *current* equity ÷ worst-case loss per unit (stop distance + slippage + entry/exit fees). Never depends on the last trade. Hard ceilings in code (2% risk/trade, 6% open risk, 3x leverage, 5% daily loss, pause after ≤5 losses) — the on-page settings can only tighten them. A bot whose last-20-trade expectancy is negative goes on *probation* (half risk) until it recovers.
+- **ATLAS circuit breakers** (shown live with status): daily loss cap, loss-streak pause, liquidity (Hyperliquid `l2Book` depth within ±0.5% of mid), stale feed (no WS data > 10 s). Any tripped rule blocks new entries and ideas; the veto log shows which rule fired.
+- **Journal & lessons:** every closed paper trade is appended to a local journal with R result, fees, slippage estimate, separate *process* and *outcome* grades and a one-line lesson. Per-bot stats (win rate, avg R, expectancy, last-20 expectancy, profit factor, equity curve). Export as JSON.
+- **Tickets:** each desk idea is numbered `TD-YYYYMMDD-NN` with exact entry, stop, target and size per $10k.
+
+Tests: `node tests/risk.test.js`
+
+Risk/journal concepts adapted from [galleonlabs/hypergrok-trading-desk](https://github.com/galleonlabs/hypergrok-trading-desk) (MIT).
 
 > ⚠️ Everything is **paper/hypothetical**. These are not real trades and not financial advice.
 
