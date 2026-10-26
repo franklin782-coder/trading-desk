@@ -1,0 +1,34 @@
+name: grok-mark
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: grok-mark
+  cancel-in-progress: false
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Mark book (stops/targets/shadows, equity point)
+        run: python3 grok/mark.py
+      - name: Commit if changed
+        run: |
+          git config user.name "grok-mark[bot]"
+          git config user.email "grok-mark@users.noreply.github.com"
+          if git diff --quiet -- grok/book.json grok/journal.jsonl; then echo "no changes"; exit 0; fi
+          git add grok/book.json grok/journal.jsonl
+          git commit -m "grok-mark: $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+          for i in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "push failed, rebasing (attempt $i)"
+            git pull --rebase || { git rebase --abort; git reset --hard origin/main; python3 grok/mark.py; git add grok/book.json grok/journal.jsonl; git commit -m "grok-mark: re-mark after conflict [skip ci]" || exit 0; }
+            sleep $((i*5))
+          done
+          exit 1

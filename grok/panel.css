@@ -1,0 +1,28 @@
+/* GROK $1K -> $5K challenge panel */
+.grok-sec{margin-top:14px}
+.grok-panel{--gk:#e879f9;border-color:rgba(232,121,249,.35);box-shadow:0 0 0 1px rgba(232,121,249,.08) inset,0 20px 60px -30px rgba(232,121,249,.45)}
+.grok-panel .ph-title .gk{color:var(--gk);text-shadow:0 0 12px rgba(232,121,249,.7)}
+.gk-badge{font-size:10px;color:var(--mut);border:1px solid var(--line2);padding:2px 8px;border-radius:6px}
+.gk-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:10px 14px}
+.gk-stats .s{border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:rgba(255,255,255,.02)}
+.gk-stats label{display:block;font-size:9px;letter-spacing:.14em;color:var(--dim)}
+.gk-stats b{font-size:15px}
+.gk-prog{margin:0 14px 10px;height:10px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid var(--line);position:relative;overflow:hidden}
+.gk-prog i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--cy),var(--gk));box-shadow:0 0 14px var(--gk);transition:width .6s}
+.gk-prog span{position:absolute;right:6px;top:-1px;font-size:9px;color:var(--tx)}
+.gk-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;padding:0 14px 14px}
+@media(max-width:900px){.gk-grid{grid-template-columns:1fr}}
+.gk-box{border:1px solid var(--line);border-radius:10px;background:rgba(5,8,16,.45);min-width:0}
+.gk-box h4{margin:0;padding:7px 10px;font-size:10px;letter-spacing:.16em;color:var(--mut);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.gk-curve{height:120px;display:block;width:100%}
+.gk-chart{height:300px}
+.gk-tf button{background:none;border:1px solid var(--line2);color:var(--mut);font:inherit;font-size:10px;border-radius:5px;padding:1px 6px;cursor:pointer}
+.gk-tf button.on{color:var(--gk);border-color:var(--gk)}
+.gk-list{max-height:220px;overflow:auto;font-size:11px}
+.gk-row{padding:6px 10px;border-top:1px solid var(--line);cursor:pointer}
+.gk-row:hover{background:rgba(232,121,249,.06)}
+.gk-row small{color:var(--mut)}
+.gk-row .ls{color:#f5d0fe;font-style:italic}
+.gk-thesis{padding:8px 10px;font-size:11px;color:var(--tx);line-height:1.45}
+.gk-empty{padding:10px;color:var(--dim);font-size:11px}
+.gk-yes{color:var(--up)} .gk-no{color:var(--dn)}

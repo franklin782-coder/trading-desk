@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="grok/panel.css">
 </head>
 <body>
 <div class="bg-grid" aria-hidden="true"></div>
@@ -49,6 +50,26 @@
   <div class="stat"><label>PAPER P&amp;L <em>hypothetical</em></label><b id="stPnl">$0.00</b></div>
   <div class="stat"><label>PAPER WIN RATE</label><b id="stWin">—</b></div>
   <div class="stat"><label>MARKET MOOD</label><b id="stMood">—</b></div>
+</section>
+
+<section class="grok-sec" id="grokSec">
+  <div class="panel grok-panel" id="grokPanel">
+    <div class="panel-head"><div class="ph-title big"><span class="ic gk">◆</span> <span class="gk">GROK</span> · $1K → $5K CHALLENGE</div><div class="gk-badge">PAPER · Hyperliquid perps · skeptic-gated · <span id="gkUpd">—</span></div></div>
+    <div class="gk-stats" id="gkStats"></div>
+    <div class="gk-prog" id="gkProg"></div>
+    <div class="gk-grid">
+      <div>
+        <div class="gk-box"><h4>EQUITY CURVE</h4><canvas class="gk-curve" id="gkCurve"></canvas></div>
+        <div class="gk-box" style="margin-top:10px"><h4><span id="gkChartT">BTC-PERP · 1h</span><span class="gk-tf"><button data-tf="15m">15m</button> <button data-tf="1h" class="on">1h</button> <button data-tf="4h">4h</button></span></h4><div class="gk-chart" id="gkChart"></div></div>
+      </div>
+      <div>
+        <div class="gk-box"><h4>OPEN POSITIONS · LIVE</h4><div class="gk-list" id="gkOpen"></div></div>
+        <div class="gk-box" style="margin-top:10px"><h4>LAST THESIS</h4><div class="gk-thesis" id="gkThesis"></div></div>
+        <div class="gk-box" style="margin-top:10px"><h4>CLOSED TRADES &amp; LESSONS</h4><div class="gk-list" id="gkClosed"></div></div>
+        <div class="gk-box" style="margin-top:10px"><h4>SKEPTIC REVIEWS <small id="gkSkepN"></small></h4><div class="gk-list" id="gkSkep"></div></div>
+      </div>
+    </div>
+  </div>
 </section>
 
 <section class="pipeline panel" id="pipeline">
@@ -183,5 +204,6 @@
 <script src="js/risk.js"></script>
 <script src="js/search.js"></script>
 <script src="js/app.js"></script>
+<script src="js/grok-panel.js"></script>
 </body>
 </html>

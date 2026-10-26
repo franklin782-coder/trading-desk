@@ -1055,7 +1055,7 @@
     setInterval(() => { renderRsi(); drawRadar(); drawHeat(); }, 3000);
     setInterval(idleTerm, 2600);
     deskLoop();
-    window.__desk = { M, ideas, paper, closed, book, journal, get limits() { return limits; }, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
+    window.__desk = { M, ideas, paper, closed, book, journal, focus, setFocus, get limits() { return limits; }, EXTRA, addCoin, get pendingCoin() { return pendingCoin; }, get cycle() { return cycle; } }; // for debugging
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

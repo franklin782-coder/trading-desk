@@ -1,0 +1,36 @@
+{
+ "account": "GROK",
+ "currency": "USDC",
+ "created": "2026-10-26",
+ "start_equity": 1000.0,
+ "goal_equity": 5000.0,
+ "cash": 1000.0,
+ "rules": {
+  "fee_rate": 0.00045,
+  "slippage": 0.0005,
+  "risk_default_pct": 2.0,
+  "risk_max_pct": 3.0,
+  "max_leverage": 5.0,
+  "max_open": 3,
+  "max_open_risk_pct": 8.0,
+  "daily_loss_stop_pct": 6.0,
+  "loss_streak": 3,
+  "loss_streak_pause_h": 6
+ },
+ "open": [],
+ "closed": [],
+ "equity": [
+  {
+   "t": "2026-10-26T00:00:00Z",
+   "eq": 1000.0
+  }
+ ],
+ "day": {
+  "date": "2026-10-26",
+  "start_equity": 1000.0
+ },
+ "shadow": [],
+ "last_mark": null,
+ "last_thesis": null,
+ "updated": "2026-10-26T18:50:10Z"
+}
