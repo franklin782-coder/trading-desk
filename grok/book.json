@@ -39,10 +39,14 @@
   {
    "t": "2026-10-26T22:49:00Z",
    "eq": 1000.0
+  },
+  {
+   "t": "2026-10-27T00:09:20Z",
+   "eq": 1000.0
   }
  ],
  "day": {
-  "date": "2026-10-26",
+  "date": "2026-10-27",
   "start_equity": 1000.0
  },
  "shadow": [
@@ -63,8 +67,8 @@
    "biggest_risk": "Stop placed inside 4h ATR noise combined with 4h RSI 39 bounce risk \u2014 high probability of stop-loss before target"
   }
  ],
- "last_mark": "2026-10-26T22:49:00Z",
+ "last_mark": "2026-10-27T00:09:20Z",
  "last_thesis": null,
- "updated": "2026-10-26T22:49:00Z",
+ "updated": "2026-10-27T00:09:20Z",
  "marked_eq": 1000.0
 }
