@@ -67,6 +67,10 @@
   {
    "t": "2026-10-27T07:25:35Z",
    "eq": 1000.0
+  },
+  {
+   "t": "2026-10-27T08:45:58Z",
+   "eq": 1000.0
   }
  ],
  "day": {
@@ -91,8 +95,8 @@
    "biggest_risk": "Stop placed inside 4h ATR noise combined with 4h RSI 39 bounce risk \u2014 high probability of stop-loss before target"
   }
  ],
- "last_mark": "2026-10-27T07:25:35Z",
+ "last_mark": "2026-10-27T08:45:58Z",
  "last_thesis": null,
- "updated": "2026-10-27T07:25:35Z",
+ "updated": "2026-10-27T08:45:59Z",
  "marked_eq": 1000.0
 }
