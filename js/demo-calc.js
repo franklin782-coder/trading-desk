@@ -6,7 +6,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const TAKER = 0.00045; // 0.045% per side, Hyperliquid taker default
+  const TAKER = 0.00045; // 0.045% per side, Hyperliquid taker default (tier 0)
+  const MAKER = 0.00015; // 0.015% per side, Hyperliquid maker default (tier 0)
 
   function mmRatio(maxLeverage) {
     const m = +maxLeverage;
@@ -228,10 +229,24 @@
     return bid > 0 ? bid : (mid || mark);
   }
 
+  function fundingPayment(side, qty, mark, rate) {
+    const q = +qty || 0, px = +mark || 0, r = +rate || 0;
+    if (!(q > 0) || !(px > 0)) return 0;
+    const signed = side === 'short' ? -1 : 1;
+    return q * px * r * signed;
+  }
+
+  function maintenanceUsd(qty, mark, maxLeverage) {
+    const q = +qty || 0, px = +mark || 0;
+    if (!(q > 0) || !(px > 0)) return 0;
+    return q * px * mmRatio(maxLeverage);
+  }
+
   return {
-    TAKER, mmRatio, roundQty, clampPrice,
+    TAKER, MAKER, mmRatio, roundQty, clampPrice,
     favorablePrice, adversePrice, movePct, favorablePct,
     liqPrice, closePnl, roePct, riskReward, plan,
-    unrealized, hitLevel, limitFillable, entryFromBook
+    unrealized, hitLevel, limitFillable, entryFromBook,
+    fundingPayment, maintenanceUsd
   };
 });
