@@ -243,11 +243,22 @@
   }
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
+  function sizeChart() {
+    if (!chart) return;
+    const el = $('#focusChart');
+    if (!el) return;
+    const w = Math.floor(el.clientWidth);
+    const h = Math.floor(el.clientHeight);
+    if (w < 40 || h < 40) return;
+    chart.resize(w, h);
+  }
   function buildChart() {
     if (!LWC || chart) return;
     const el = $('#focusChart');
     chart = LWC.createChart(el, {
-      autoSize: true,
+      autoSize: false,
+      width: Math.max(el.clientWidth || 0, 320),
+      height: Math.max(el.clientHeight || 0, 320),
       layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#7f8bb0', fontFamily: "'JetBrains Mono', monospace", fontSize: 10 },
       grid: { vertLines: { color: 'rgba(120,160,255,.05)' }, horzLines: { color: 'rgba(120,160,255,.05)' } },
       rightPriceScale: { borderColor: 'rgba(120,160,255,.15)', scaleMargins: { top: 0.08, bottom: 0.2 } },
@@ -257,6 +268,14 @@
     series = chart.addCandlestickSeries({ upColor: '#2bf5a0', downColor: '#ff4d6d', wickUpColor: '#2bf5a0', wickDownColor: '#ff4d6d', borderVisible: false });
     volSeries = chart.addHistogramSeries({ priceScaleId: '', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
     chart.priceScale('').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+    if (typeof ResizeObserver === 'function' && !sizeChart._ro) {
+      sizeChart._ro = new ResizeObserver(() => sizeChart());
+      sizeChart._ro.observe(el);
+      if (el.parentElement) sizeChart._ro.observe(el.parentElement);
+    }
+    sizeChart();
+    requestAnimationFrame(sizeChart);
+    window.addEventListener('resize', sizeChart);
   }
   function renderChart(fit) {
     if (!series) return;
@@ -267,6 +286,7 @@
       volSeries.setData(candles.map(b => ({ time: b.time, value: b.volume || 0, color: b.close >= b.open ? 'rgba(43,245,160,.35)' : 'rgba(255,77,109,.35)' })));
     }
     drawLines();
+    sizeChart();
     if (fit && chart && candles.length) chart.timeScale().fitContent();
   }
   function drawLines() {
@@ -871,6 +891,6 @@
     C, mkt, getBook: () => book, preview: () => preview, lastPx, plannedEntry, updateCalc,
     openPosition, closePosition, placeOrder, resetSilent() { book = defaultBook(); save(); onPrice(); },
     setForm(p) { Object.assign(form, p); if (p.side) setSide(p.side); if (p.typ) setTyp(p.typ); if (p.sizeMode) setMode(p.sizeMode); },
-    ready: () => lastPx() > 0, candleCount: () => candles.length
+    ready: () => lastPx() > 0, candleCount: () => candles.length, sizeChart
   };
 })();
