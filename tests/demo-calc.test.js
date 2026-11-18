@@ -251,5 +251,17 @@ const sanitized = B.loadFromStorage(memOk);
 almost(sanitized.balance, 888000, 0, 'valid balance kept when pending is malformed');
 assert(Array.isArray(sanitized.pending) && sanitized.positions.length === 1, 'malformed arrays are coerced, positions kept');
 
+
+// New HIP-3 equity perps on dex xyz: growth mode, scale 1 → 0.2× base fees
+['xyz:NVDA','xyz:AAPL','xyz:TSLA','xyz:SPCX','xyz:ANT'].forEach(function (id) {
+  const r = M.feeRatesFor(id);
+  almost(r.taker, 0.00009, 1e-12, id + ' growth taker 0.009%');
+  almost(r.maker, 0.00003, 1e-12, id + ' growth maker 0.003%');
+  assert(M.byId(id), id + ' is in the catalog');
+});
+assert(M.FALLBACK['xyz:NVDA'].maxLeverage === 10 && M.FALLBACK['xyz:AAPL'].maxLeverage === 20, 'NVDA 10x / AAPL 20x fallbacks');
+assert(M.FALLBACK['xyz:TSLA'].maxLeverage === 20 && M.FALLBACK['xyz:SPCX'].maxLeverage === 20 && M.FALLBACK['xyz:ANT'].maxLeverage === 10, 'TSLA/SPCX 20x, ANT 10x fallbacks');
+assert(M.CATALOG.length === 10, 'catalog has 10 markets, got ' + M.CATALOG.length);
+
 if (failed) { console.error('\n' + failed + ' failed'); process.exit(1); }
 console.log('\nall tests passed');

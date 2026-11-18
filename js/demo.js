@@ -28,11 +28,12 @@
   if (!ui) ui = B.defaultUi();
   const live = {};
   M.CATALOG.forEach(function (m) {
-    const fb = M.FALLBACK[m.id];
+    const fb = M.FALLBACK[m.id] || {};
     live[m.id] = {
       mark: 0, mid: 0, bid: 0, ask: 0, oracle: 0, funding: 0, prevDay: 0, vol: 0,
-      maxLeverage: fb.maxLeverage, szDecimals: fb.szDecimals, marginTiers: fb.marginTiers,
-      growthMode: !!fb.growthMode, deployerFeeScale: fb.deployerFeeScale,
+      maxLeverage: fb.maxLeverage || 10, szDecimals: fb.szDecimals == null ? 3 : fb.szDecimals,
+      marginTiers: fb.marginTiers || [{ lowerBound: 0, maxLeverage: fb.maxLeverage || 10 }],
+      growthMode: !!fb.growthMode, deployerFeeScale: fb.deployerFeeScale == null ? 1 : fb.deployerFeeScale,
       fees: M.feeRatesFor(m.id), book: { bids: [], asks: [] }, tape: []
     };
   });
@@ -52,7 +53,7 @@
   function L(id) { return live[id] || live['xyz:XYZ100']; }
   function lastPx(id) {
     const x = L(id || coin());
-    return x.mark || x.mid || x.ask || x.bid || 0;
+    return x.mark || x.mid || x.ask || x.bid || x.oracle || 0;
   }
   function marksMap() {
     const o = {};

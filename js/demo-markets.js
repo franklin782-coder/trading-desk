@@ -17,6 +17,11 @@
   const CATALOG = [
     { id: 'xyz:XYZ100', dex: 'xyz', short: 'XYZ100', name: 'NASDAQ 100', kind: 'index' },
     { id: 'xyz:SP500', dex: 'xyz', short: 'SP500', name: 'S&P 500', kind: 'index' },
+    { id: 'xyz:NVDA', dex: 'xyz', short: 'NVDA', name: 'NVIDIA', kind: 'stock' },
+    { id: 'xyz:AAPL', dex: 'xyz', short: 'AAPL', name: 'Apple', kind: 'stock' },
+    { id: 'xyz:TSLA', dex: 'xyz', short: 'TSLA', name: 'Tesla', kind: 'stock' },
+    { id: 'xyz:SPCX', dex: 'xyz', short: 'SPCX', name: 'SpaceX', kind: 'preipo' },
+    { id: 'xyz:ANT', dex: 'xyz', short: 'ANT', name: 'Anthropic', kind: 'preipo' },
     { id: 'BTC', dex: '', short: 'BTC', name: 'Bitcoin', kind: 'crypto' },
     { id: 'SOL', dex: '', short: 'SOL', name: 'Solana', kind: 'crypto' },
     { id: 'HYPE', dex: '', short: 'HYPE', name: 'HYPE', kind: 'crypto' }
@@ -31,6 +36,31 @@
     'xyz:SP500': {
       maxLeverage: 50, szDecimals: 3,
       marginTiers: [{ lowerBound: 0, maxLeverage: 50 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:NVDA': {
+      maxLeverage: 10, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:AAPL': {
+      maxLeverage: 20, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 20 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:TSLA': {
+      maxLeverage: 20, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 20 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:SPCX': {
+      maxLeverage: 20, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 20 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:ANT': {
+      maxLeverage: 10, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
       growthMode: true, deployerFeeScale: 1
     },
     BTC: {
