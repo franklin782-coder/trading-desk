@@ -5,13 +5,27 @@
   const $ = function (s, el) { return (el || document).querySelector(s); };
   const $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
 
+  if (!C || !M || !B) {
+    console.error('DEMO scripts failed to load', { C: !!C, M: !!M, B: !!B });
+    function bootFail() {
+      const el = document.getElementById('toast');
+      if (el) { el.textContent = 'Demo failed to load. Please hard-refresh the page.'; el.classList.add('show'); }
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootFail);
+    else bootFail();
+    return;
+  }
+
   const INFO = 'https://api.hyperliquid.xyz/info';
   const WSURL = 'wss://api.hyperliquid.xyz/ws';
   const TV = { up: '#089981', dn: '#F23645', pnlUp: '#25E2B7', blue: '#2962FF', orange: '#fb923c' };
   const DEFAULT_TF = M.DEFAULT_TF || '1m';
 
-  let book = B.loadFromStorage();
-  let ui = B.loadUi();
+  let book, ui;
+  try { book = B.loadFromStorage(); } catch (e) { console.error('loadFromStorage', e); book = B.defaultBook(); }
+  try { ui = B.loadUi(); } catch (e) { console.error('loadUi', e); ui = B.defaultUi(); }
+  if (!book) book = B.defaultBook();
+  if (!ui) ui = B.defaultUi();
   const live = {};
   M.CATALOG.forEach(function (m) {
     const fb = M.FALLBACK[m.id];
@@ -482,6 +496,11 @@
     host.appendChild(root);
     const plot = root.querySelector('.chart');
     const overlay = root.querySelector('.tv-overlay');
+    if (!window.LightweightCharts) {
+      if (plot) plot.innerHTML = '<div class="chart-fallback">Chart library failed to load. The ticket still works.</div>';
+      panes[i] = { id: i, coin: spec.coin, tf: spec.tf, root: root, plot: plot, overlay: overlay, chart: null, series: null, draw: null };
+      return;
+    }
     const chart = LightweightCharts.createChart(plot, chartOptions(plot, spec.tf));
     const series = chart.addCandlestickSeries(Object.assign({
       priceFormat: { type: 'price', precision: pxDec(spec.coin), minMove: M.tickSize(L(spec.coin).szDecimals) }
@@ -540,7 +559,7 @@
     try {
       const bars = await loadCandles(pane.coin, pane.tf);
       if (pane.series) pane.series.setData(bars || []);
-      if (bars && bars.length) pane.chart.timeScale().fitContent();
+      if (pane.chart && bars && bars.length) pane.chart.timeScale().fitContent();
     } catch (e) { console.warn('candles', pane.coin, e); }
     applyFillMarkers(pane);
     sizePane(pane);
@@ -558,7 +577,7 @@
     persistUi();
     const note = pane.root.querySelector('.tf-note');
     if (note) note.hidden = !M.isSubMinute(tf);
-    pane.chart.applyOptions(chartOptions(pane.plot, tf));
+    if (pane.chart) pane.chart.applyOptions(chartOptions(pane.plot, tf));
     await fillPaneData(pane);
   }
 
@@ -1044,24 +1063,31 @@
     toast(orderKind({ typ: typ }) + ' order placed on ' + M.shortName(c));
   }
 
+  function desiredView() {
+    return location.hash === '#portfolio' ? 'portfolio' : 'trade';
+  }
   function setView(name) {
-    ui.view = name === 'portfolio' ? 'portfolio' : 'trade';
-    persistUi();
+    const view = name === 'portfolio' ? 'portfolio' : 'trade';
+    ui.view = view;
+    try { persistUi(); } catch (e) { /* */ }
     const trade = $('#tradeView'), port = $('#portfolioView');
-    if (trade) trade.hidden = ui.view === 'portfolio';
-    if (port) port.hidden = ui.view !== 'portfolio';
-    if ($('#navTrade')) $('#navTrade').classList.toggle('on', ui.view === 'trade');
-    if ($('#navPort')) $('#navPort').classList.toggle('on', ui.view === 'portfolio');
-    if (ui.view === 'portfolio' && window.DemoPortfolio) DemoPortfolio.render(port, book, marksMap(), ui);
-    if (ui.view === 'trade') requestAnimationFrame(sizeAll);
-    const want = ui.view === 'portfolio' ? '#portfolio' : '';
-    if (location.hash !== want && location.hash !== (want || '#')) {
-      history.replaceState(null, '', want || (location.pathname + location.search));
+    if (trade) trade.hidden = view === 'portfolio';
+    if (port) port.hidden = view !== 'portfolio';
+    if ($('#navTrade')) $('#navTrade').classList.toggle('on', view === 'trade');
+    if ($('#navPort')) $('#navPort').classList.toggle('on', view === 'portfolio');
+    if (view === 'portfolio' && window.DemoPortfolio && port) {
+      try { DemoPortfolio.render(port, book, marksMap(), ui); } catch (e) { console.error('portfolio render', e); toast('Portfolio failed to render'); }
+    }
+    if (view === 'trade') requestAnimationFrame(function () { try { sizeAll(); } catch (e) { /* */ } });
+    const want = view === 'portfolio' ? '#portfolio' : '#trade';
+    if (location.hash !== want) {
+      try { history.replaceState(null, '', location.pathname + location.search + want); } catch (e) { /* */ }
     }
   }
 
   function refreshXfer() {
     const row = $('#xferRow');
+    if (!row) return;
     row.hidden = book.accountMode !== 'standard';
     if (book.accountMode === 'standard') {
       const d = book.dexCash || { main: 0, xyz: 0 };
@@ -1183,7 +1209,7 @@
     $$('#levModalMm [data-mm]').forEach(function (b) {
       b.addEventListener('click', function () { $$('#levModalMm [data-mm]').forEach(function (x) { x.classList.toggle('on', x === b); }); });
     });
-    window.addEventListener('hashchange', function () { setView(location.hash === '#portfolio' ? 'portfolio' : 'trade'); });
+    window.addEventListener('hashchange', function () { setView(desiredView()); });
     window.addEventListener('resize', sizeAll);
     setInterval(function () {
       const el = $('#clock');
@@ -1199,15 +1225,20 @@
   }
 
   async function init() {
-    bind();
-    showTicketFields();
-    setView(location.hash === '#portfolio' ? 'portfolio' : (ui.view || 'trade'));
-    rebuildGrid();
-    renderAll();
+    try { bind(); } catch (e) { console.error('bind', e); }
+    try { showTicketFields(); } catch (e) { console.error('ticket', e); }
+    try { setView(desiredView()); } catch (e) {
+      console.error('setView', e);
+      const trade = $('#tradeView'), port = $('#portfolioView');
+      if (trade) trade.hidden = false;
+      if (port) port.hidden = true;
+    }
+    try { rebuildGrid(); } catch (e) { console.error('rebuildGrid', e); }
+    try { renderAll(); } catch (e) { console.error('renderAll', e); }
     try { await loadMeta(); } catch (e) { setFeed('REST error', 'warn'); }
-    renderAll();
-    connect();
-    startPoll();
+    try { renderAll(); } catch (e) { /* */ }
+    try { connect(); } catch (e) { console.error('ws', e); setFeed('WS error', 'warn'); }
+    try { startPoll(); } catch (e) { console.error('poll', e); }
   }
 
   window.DemoDesk = {

@@ -58,31 +58,61 @@
     return b;
   }
 
+  function backupStorageKey(ls, key) {
+    if (!ls || !key) return;
+    try {
+      const raw = ls.getItem(key);
+      if (raw == null) return;
+      ls.setItem(key + '-backup', raw);
+      ls.setItem(key + '-backup-at', String(nowMs()));
+    } catch (e) { /* quota */ }
+  }
+
+  function sanitizeBook(b) {
+    if (!b || typeof b !== 'object') return null;
+    if (!Array.isArray(b.positions)) b.positions = [];
+    if (!Array.isArray(b.pending)) b.pending = [];
+    if (!Array.isArray(b.orders)) b.orders = b.pending.slice();
+    if (!Array.isArray(b.history)) b.history = [];
+    if (!Array.isArray(b.funding)) b.funding = [];
+    try {
+      b.equityLog = normalizeEquityLog(b.equityLog);
+      if (!b.equityLog.length) b.equityLog = [{ t: nowMs(), equity: isFinite(+b.balance) ? +b.balance : START }];
+    } catch (e) {
+      b.equityLog = [{ t: nowMs(), equity: isFinite(+b.balance) ? +b.balance : START }];
+    }
+    if (!isFinite(+b.balance)) b.balance = START;
+    else b.balance = +b.balance;
+    if (!isFinite(+b.seq)) b.seq = 1;
+    if (!b.lastFundingHour) b.lastFundingHour = M.currentFundingHour(nowMs());
+    if (!b.defaultMarginMode) b.defaultMarginMode = 'cross';
+    if (!b.accountMode) b.accountMode = 'unified';
+    if (!b.dexCash || typeof b.dexCash !== 'object') b.dexCash = { main: b.balance, xyz: 0 };
+    b.version = 2;
+    return b;
+  }
+
   function loadFromStorage(storage) {
     const ls = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
     if (!ls) return defaultBook();
     try {
       const v2 = ls.getItem(LS_V2);
       if (v2) {
-        const b = JSON.parse(v2);
-        if (b && typeof b === 'object') {
-          if (!Array.isArray(b.funding)) b.funding = [];
-          if (!Array.isArray(b.orders)) b.orders = b.pending ? b.pending.slice() : [];
-          if (!Array.isArray(b.equityLog)) b.equityLog = [{ t: nowMs(), equity: +b.balance || START }];
-          if (!b.lastFundingHour) b.lastFundingHour = M.currentFundingHour(nowMs());
-          if (!b.defaultMarginMode) b.defaultMarginMode = 'cross';
-          if (!b.accountMode) b.accountMode = 'unified';
-          if (!b.dexCash) b.dexCash = { main: +b.balance || START, xyz: 0 };
-          b.version = 2;
-          return b;
-        }
+        try {
+          const b = sanitizeBook(JSON.parse(v2));
+          if (b) return b;
+        } catch (e) { /* corrupt v2 */ }
+        backupStorageKey(ls, LS_V2);
       }
     } catch (e) { /* ignore */ }
     try {
       const v1 = ls.getItem(LS_V1);
       if (v1) {
-        const raw = JSON.parse(v1);
-        if (raw && typeof raw === 'object') return migrateV1(raw);
+        try {
+          const raw = JSON.parse(v1);
+          if (raw && typeof raw === 'object') return sanitizeBook(migrateV1(raw)) || migrateV1(raw);
+        } catch (e) { /* corrupt v1 */ }
+        backupStorageKey(ls, LS_V1);
       }
     } catch (e) { /* ignore */ }
     return defaultBook();
@@ -1063,7 +1093,7 @@
 
   return {
     LS_V1, LS_V2, LS_UI, START,
-    defaultBook, migrateV1, loadFromStorage, saveToStorage,
+    defaultBook, migrateV1, sanitizeBook, backupStorageKey, loadFromStorage, saveToStorage,
     defaultUi, loadUi, saveUi, panesForLayout,
     nextId, usedMargin, upnlTotal, equity, totalMM, freeMargin,
     normalizeEquityLog, snapshotEquity, applyFunding, openPosition, closePosition,

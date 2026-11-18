@@ -236,5 +236,20 @@ almost(B.periodPnl(bookQ, {}, nowP, 0), -500, 0.01, 'new account all-time');
 almost(B.periodPnl(bookQ, {}, nowP, 86400000), -500, 0.01, '24h equals all-time when the account is newer than 24h');
 almost(B.periodPnl(bookQ, {}, nowP, 7 * 86400000), -500, 0.01, '7d equals all-time when the account is newer than 7d');
 
+
+// Corrupt v2 is backed up; valid v1 is used instead of wiping the account
+const memBad = (() => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k,v) => { m[k] = v; }, _m: m }; })();
+memBad.setItem(B.LS_V2, '{not-json');
+memBad.setItem(B.LS_V1, JSON.stringify({ balance: 777000, seq: 2, positions: [], pending: [], history: [] }));
+const recovered = B.loadFromStorage(memBad);
+almost(recovered.balance, 777000, 0, 'corrupt v2 falls back to v1 balance');
+assert(memBad.getItem(B.LS_V2 + '-backup') === '{not-json', 'corrupt v2 is backed up, not deleted');
+
+const memOk = (() => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k,v) => { m[k] = v; }, _m: m }; })();
+memOk.setItem(B.LS_V2, JSON.stringify({ balance: 888000, positions: [{ id: 'P', coin: 'BTC', side: 'long', qty: 1, entry: 50, margin: 10, leverage: 5 }], pending: 'oops' }));
+const sanitized = B.loadFromStorage(memOk);
+almost(sanitized.balance, 888000, 0, 'valid balance kept when pending is malformed');
+assert(Array.isArray(sanitized.pending) && sanitized.positions.length === 1, 'malformed arrays are coerced, positions kept');
+
 if (failed) { console.error('\n' + failed + ' failed'); process.exit(1); }
 console.log('\nall tests passed');
