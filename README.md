@@ -39,6 +39,8 @@ Plain static HTML/CSS/JS with no build step. `js/engine.js` holds the pure indic
   A badge shows the US session (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED, New York time, holidays not modelled). Outside regular hours perps still trade, but prices are set by perp traders only.
 - One shared `js/app.js` drives both pages; `stocks.html` sets `window.DESK_CFG` (dex, coins, ticket prefix, storage prefix). `js/market-hours.js` is pure and unit-tested.
 - The old BNB Memes page has been removed.
+- **◈ DEMO** (`demo.html`) — manual paper trading on a single market, Hyperliquid HIP-3 `xyz:XYZ100` (Nasdaq-100-style perp). Starting demo balance **$1,000,000** (localStorage `td-demo-xyz100-v1`), Long/Short, Market/Limit, leverage up to the market max, TP/SL by price or % move, and a live pre-trade calculator (notional, margin, qty, approximate isolated liquidation, taker fees, P&L / ROE at TP and SL, risk/reward, and P&L if price moves ±0.5/1/2/5%). Open positions mark to the live mid/mark, auto-close on TP/SL/liquidation, and show as lines on the chart. UI is in Russian. No bots, no AI, no backend: pure client-side JS (`js/demo.js`, `js/demo-calc.js`). Tests: `node tests/demo-calc.test.js`.
+
 
 ## Capital split & portfolio (80/20)
 

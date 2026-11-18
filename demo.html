@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Trading Desk · DEMO · XYZ100</title>
+<meta name="description" content="Демо-счёт $1,000,000: ручная торговля Hyperliquid HIP-3 перпом xyz:XYZ100 (Nasdaq-100) с калькулятором P&amp;L, плечом, TP/SL. Только бумага, не финансовая рекомендация.">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2322d3ee'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2305070d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body class="demo-page">
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo"><span></span></div>
+    <div>
+      <h1><span class="glitch" data-text="DEMO · XYZ100">DEMO · XYZ100</span></h1>
+      <div class="sub"><span class="sess">session <b>demo-xyz100</b></span> · Hyperliquid HIP-3 <b>xyz:XYZ100</b> · Nasdaq-100 perp · <b class="paper-tag">PAPER ONLY · $1M</b></div>
+    </div>
+  </div>
+  <nav class="nav"><a href="./">◆ MAIN DESK</a><a href="stocks.html">▲ STOCKS</a><a href="demo.html" class="on">◈ DEMO</a></nav>
+  <div class="live-pill" id="livePill"><span class="dot"></span><span id="liveTxt">LIVE</span></div>
+  <div class="meta">
+    <div class="m"><label>БАЛАНС</label><b id="hdrBal">$1,000,000.00</b></div>
+    <div class="m"><label>ЭКВИТИ</label><b id="hdrEq">$1,000,000.00</b></div>
+    <div class="m"><label>СВОБ. МАРЖА</label><b id="hdrFree">$1,000,000.00</b></div>
+    <div class="m"><label>НЕРАЛ. P&amp;L</label><b id="hdrUpnl">$0.00</b></div>
+    <div class="m"><label>FEED</label><b id="feed" class="warn">connecting…</b></div>
+    <div class="m hide-sm"><label>LOCAL</label><b id="clock">--:--:--</b></div>
+  </div>
+</header>
+
+<section class="desk-stats demo-mkt">
+  <div class="stat"><label>MARK</label><b id="stMark">—</b></div>
+  <div class="stat"><label>MID</label><b id="stMid">—</b></div>
+  <div class="stat"><label>24H</label><b id="stChg">—</b></div>
+  <div class="stat"><label>FUNDING</label><b id="stFund">—</b></div>
+  <div class="stat"><label>MAX LEV</label><b id="stLev">—</b></div>
+  <div class="stat"><label>24H VOLUME</label><b id="stVol">—</b></div>
+</section>
+
+<main class="demo-layout">
+  <section class="panel focus" id="focusPanel">
+    <div class="panel-head">
+      <div class="ph-left">
+        <div>
+          <div class="focus-title"><span id="focusCoin">XYZ100</span><span class="perp">-PERP</span> <span id="focusPx" class="px">—</span> <span id="focusChg" class="chg">—</span></div>
+          <div class="focus-sub" id="focusSub">живой оракул / mark Hyperliquid · только бумага</div>
+        </div>
+      </div>
+      <div class="ph-right">
+        <div class="chips" id="focusChips"></div>
+        <div class="tf" id="tfSwitch">
+          <button type="button" data-tf="1m">1m</button>
+          <button type="button" data-tf="5m">5m</button>
+          <button type="button" data-tf="15m" class="on">15m</button>
+          <button type="button" data-tf="1h">1h</button>
+          <button type="button" data-tf="4h">4h</button>
+          <button type="button" data-tf="1d">1d</button>
+        </div>
+      </div>
+    </div>
+    <div class="focus-body demo-chart-body">
+      <div id="focusChart" class="chart"></div>
+      <div class="legend">
+        <span class="lg e9">вход</span>
+        <span class="lg ide">TP</span>
+        <span class="lg e21">SL</span>
+        <span class="lg liq">ликвидация ≈</span>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel ticket" id="ticket">
+    <div class="panel-head">
+      <div class="ph-title">◈ ОРДЕР · XYZ100</div>
+      <div class="paper-badge">ДЕМО · isolated</div>
+    </div>
+    <form class="ticket-body" id="orderForm" autocomplete="off" onsubmit="return false">
+      <div class="seg" role="group" aria-label="Сторона">
+        <button type="button" class="seg-btn long on" id="btnLong" data-side="long">Long</button>
+        <button type="button" class="seg-btn short" id="btnShort" data-side="short">Short</button>
+      </div>
+      <div class="seg slim" role="group" aria-label="Тип ордера">
+        <button type="button" class="seg-btn on" id="btnMkt" data-typ="market">Market</button>
+        <button type="button" class="seg-btn" id="btnLmt" data-typ="limit">Limit</button>
+      </div>
+      <label class="fld" id="limitFld" hidden>
+        <span>Цена лимита</span>
+        <input type="number" id="inpLimit" step="any" min="0" inputmode="decimal" placeholder="0.0">
+      </label>
+      <div class="seg slim" role="group" aria-label="Режим размера">
+        <button type="button" class="seg-btn on" id="btnMargin" data-mode="margin">Маржа</button>
+        <button type="button" class="seg-btn" id="btnNotional" data-mode="notional">Размер позиции</button>
+      </div>
+      <label class="fld">
+        <span id="sizeLabel">Маржа, USD</span>
+        <input type="number" id="inpSize" step="any" min="0" inputmode="decimal" value="100000">
+      </label>
+      <div class="quick" id="quickSize">
+        <button type="button" data-q="10000">$10k</button>
+        <button type="button" data-q="50000">$50k</button>
+        <button type="button" data-q="100000">$100k</button>
+        <button type="button" data-q="250000">$250k</button>
+      </div>
+      <label class="fld lev-fld">
+        <span>Плечо <b id="levVal">10x</b> <em id="levMaxHint">max —</em></span>
+        <input type="range" id="inpLev" min="1" max="30" step="1" value="10">
+      </label>
+      <div class="tpsl">
+        <div class="tpsl-h">Take Profit <span class="opt">необязательно</span></div>
+        <div class="dual">
+          <label class="fld"><span>Цена TP</span><input type="number" id="inpTpPx" step="any" min="0" inputmode="decimal" placeholder="—"></label>
+          <label class="fld"><span>Движение %</span><input type="number" id="inpTpPct" step="any" inputmode="decimal" placeholder="напр. 1"></label>
+        </div>
+        <div class="tpsl-h">Stop Loss <span class="opt">необязательно</span></div>
+        <div class="dual">
+          <label class="fld"><span>Цена SL</span><input type="number" id="inpSlPx" step="any" min="0" inputmode="decimal" placeholder="—"></label>
+          <label class="fld"><span>Движение %</span><input type="number" id="inpSlPct" step="any" inputmode="decimal" placeholder="напр. 1"></label>
+        </div>
+      </div>
+
+      <div class="calc" id="calc">
+        <div class="calc-h">Калькулятор <span>до открытия</span></div>
+        <div class="calc-grid" id="calcGrid"></div>
+        <div class="calc-note" id="calcNote">Комиссия тейкер 0.045% на сторону (вход и выход). Ликвидация — оценка isolated: поддерж. маржа = половина начальной на макс. плече. Без ликвидационного сбора и без фандинга.</div>
+        <div class="sc-h">Сценарии P&amp;L от цены входа</div>
+        <div class="sc-wrap"><table class="sc-table" id="scTable"><thead><tr><th>Движение</th><th>Цена</th><th>P&amp;L</th><th>ROE</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <p class="err" id="orderErr" hidden></p>
+      <button type="button" class="go" id="btnOpen">Открыть Long</button>
+    </form>
+  </aside>
+</main>
+
+<section class="panel demo-book">
+  <div class="panel-head">
+    <div class="ph-title">📑 ОТКРЫТЫЕ ПОЗИЦИИ</div>
+    <div class="ph-note" id="posCount">0</div>
+  </div>
+  <div class="paper-wrap">
+    <table class="paper-table" id="posTable">
+      <thead><tr><th>ID</th><th>Сторона</th><th>Размер</th><th>Вход</th><th>Mark</th><th>Ликв. ≈</th><th>P&amp;L</th><th>ROE</th><th>TP / SL</th><th></th></tr></thead>
+      <tbody id="posBody"><tr class="ph"><td colspan="10">нет открытых позиций</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel demo-book" id="pendPanel" hidden>
+  <div class="panel-head">
+    <div class="ph-title">⏳ ЛИМИТНЫЕ ОРДЕРА</div>
+    <div class="ph-note" id="pendCount">0</div>
+  </div>
+  <div class="paper-wrap">
+    <table class="paper-table" id="pendTable">
+      <thead><tr><th>ID</th><th>Сторона</th><th>Лимит</th><th>Маржа / размер</th><th>Плечо</th><th>TP / SL</th><th></th></tr></thead>
+      <tbody id="pendBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel demo-book">
+  <div class="panel-head">
+    <div class="ph-title">📓 ИСТОРИЯ СДЕЛОК</div>
+    <div class="j-btns">
+      <button type="button" id="btnReset" title="сбросить демо-счёт до $1,000,000">СБРОСИТЬ СЧЁТ</button>
+    </div>
+  </div>
+  <div class="paper-wrap">
+    <table class="paper-table" id="histTable">
+      <thead><tr><th>Время</th><th>ID</th><th>Сторона</th><th>Вход → выход</th><th>Причина</th><th>P&amp;L</th><th>ROE</th></tr></thead>
+      <tbody id="histBody"><tr class="ph"><td colspan="7">история пуста</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div>Market data: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api" target="_blank" rel="noopener">Hyperliquid public API</a> HIP-3 builder-deployed perps on dex <code>xyz</code>, монета <code>xyz:XYZ100</code> (WebSocket bbo / trades / candle / activeAssetCtx + REST candleSnapshot). Charts by <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener">TradingView Lightweight Charts</a>.</div>
+  <div class="fine">Это <b>демо / бумажная торговля</b> в браузере (счёт хранится в localStorage). Сделки не уходят на биржу и не являются финансовой рекомендацией. Оценка ликвидации приблизительная.</div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="js/demo-calc.js"></script>
+<script src="js/demo.js"></script>
+</body>
+</html>
