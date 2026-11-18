@@ -52,7 +52,7 @@
   let preview = null;
   let lastPlanKey = '';
   const tpSrc = { tp: null, sl: null }; // 'px' | 'pct'
-  let chart, series, volSeries, priceLines = [];
+  let chart, series, priceLines = [];
   let ws, wsBackoff = 1000, lastMsg = 0, pollTimer = null, candleSub = null;
 
   function defaultBook() { return { balance: START, positions: [], pending: [], history: [], seq: 1 }; }
@@ -164,7 +164,6 @@
     }
     if (series) {
       series.update(bar);
-      if (volSeries) volSeries.update({ time: bar.time, value: bar.volume || 0, color: bar.close >= bar.open ? 'rgba(43,245,160,.35)' : 'rgba(255,77,109,.35)' });
     }
   }
 
@@ -251,28 +250,45 @@
     const h = Math.floor(el.clientHeight);
     if (w < 40 || h < 40) return;
     chart.resize(w, h);
+    renderOverlay();
   }
   function buildChart() {
     if (!LWC || chart) return;
     const el = $('#focusChart');
+    const TV_FONT = "'Trebuchet MS', 'Segoe UI', Arial, sans-serif";
     chart = LWC.createChart(el, {
       autoSize: false,
       width: Math.max(el.clientWidth || 0, 320),
       height: Math.max(el.clientHeight || 0, 320),
-      layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#7f8bb0', fontFamily: "'JetBrains Mono', monospace", fontSize: 10 },
-      grid: { vertLines: { color: 'rgba(120,160,255,.05)' }, horzLines: { color: 'rgba(120,160,255,.05)' } },
-      rightPriceScale: { borderColor: 'rgba(120,160,255,.15)', scaleMargins: { top: 0.08, bottom: 0.2 } },
-      timeScale: { borderColor: 'rgba(120,160,255,.15)', timeVisible: true, secondsVisible: false, rightOffset: 6, barSpacing: 7 },
-      crosshair: { mode: 0, vertLine: { color: 'rgba(34,211,238,.4)', labelBackgroundColor: '#0e7490' }, horzLine: { color: 'rgba(34,211,238,.4)', labelBackgroundColor: '#0e7490' } }
+      layout: { background: { type: 'solid', color: '#000000' }, textColor: '#B2B5BE', fontFamily: TV_FONT, fontSize: 11 },
+      grid: {
+        vertLines: { color: '#2A2A2A', style: LWC.LineStyle.Dotted },
+        horzLines: { color: '#2A2A2A', style: LWC.LineStyle.Dotted }
+      },
+      rightPriceScale: { borderColor: '#2A2A2A', scaleMargins: { top: 0.06, bottom: 0.08 } },
+      timeScale: { borderColor: '#2A2A2A', timeVisible: true, secondsVisible: false, rightOffset: 8, barSpacing: 7 },
+      localization: {
+        timeFormatter: t => new Date(t * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        priceFormatter: p => Number(p).toLocaleString('en-US', { minimumFractionDigits: precision(p || 1), maximumFractionDigits: precision(p || 1) })
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: { color: '#787B86', style: LWC.LineStyle.Dotted, labelBackgroundColor: '#363A45' },
+        horzLine: { color: '#787B86', style: LWC.LineStyle.Dotted, labelBackgroundColor: '#363A45' }
+      }
     });
-    series = chart.addCandlestickSeries({ upColor: '#2bf5a0', downColor: '#ff4d6d', wickUpColor: '#2bf5a0', wickDownColor: '#ff4d6d', borderVisible: false });
-    volSeries = chart.addHistogramSeries({ priceScaleId: '', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
-    chart.priceScale('').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+    series = chart.addCandlestickSeries({
+      upColor: '#FFFFFF', downColor: '#000000',
+      borderVisible: true, borderUpColor: '#FFFFFF', borderDownColor: '#FFFFFF',
+      wickUpColor: '#FFFFFF', wickDownColor: '#FFFFFF',
+      lastValueVisible: false, priceLineVisible: false
+    });
     if (typeof ResizeObserver === 'function' && !sizeChart._ro) {
       sizeChart._ro = new ResizeObserver(() => sizeChart());
       sizeChart._ro.observe(el);
       if (el.parentElement) sizeChart._ro.observe(el.parentElement);
     }
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => renderOverlay());
     sizeChart();
     requestAnimationFrame(sizeChart);
     window.addEventListener('resize', sizeChart);
@@ -282,40 +298,223 @@
     const d = precision(lastPx() || 1000);
     series.applyOptions({ priceFormat: { type: 'price', precision: d, minMove: Math.pow(10, -d) } });
     series.setData(candles);
-    if (volSeries) {
-      volSeries.setData(candles.map(b => ({ time: b.time, value: b.volume || 0, color: b.close >= b.open ? 'rgba(43,245,160,.35)' : 'rgba(255,77,109,.35)' })));
-    }
     drawLines();
     sizeChart();
     if (fit && chart && candles.length) chart.timeScale().fitContent();
+    renderOverlay();
   }
-  function drawLines() {
-    if (!series) return;
-    priceLines.forEach(l => { try { series.removePriceLine(l); } catch (e) { /* */ } });
-    priceLines = [];
-    function add(price, color, title, style) {
-      if (!(price > 0)) return;
-      const line = series.createPriceLine({
-        price, color, lineWidth: 1, lineStyle: style == null ? LWC.LineStyle.Dashed : style,
-        axisLabelVisible: true, title
-      });
-      priceLines.push(line);
+
+  const TV = { red: '#F23645', green: '#089981', blue: '#2962FF', pnlUp: '#25E2B7', orange: '#fb923c' };
+  const TFSEC = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+  let overlaySig = '';
+
+  function fmtPnlUsd(n) {
+    const sign = n < 0 ? '-' : '+';
+    return sign + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USD';
+  }
+  function fmtQtyLabel(q) {
+    const a = Math.abs(q);
+    if (Math.abs(a - Math.round(a)) < 1e-6) return String(Math.round(a));
+    return String(Number(a.toFixed(a >= 10 ? 2 : 4)));
+  }
+  function candleCountdown() {
+    const dur = TFSEC[tf] || 60;
+    const now = Date.now();
+    const end = (Math.floor(now / (dur * 1000)) + 1) * dur * 1000;
+    const left = Math.max(0, Math.floor((end - now) / 1000));
+    if (left >= 3600) {
+      const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+      return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
     }
-    // Preview levels
-    if (preview && preview.ok) {
-      add(preview.entry, '#22d3ee', 'вход', LWC.LineStyle.Dotted);
-      if (preview.tp) add(preview.tp.price, '#2bf5a0', 'TP');
-      if (preview.sl) add(preview.sl.price, '#ff4d6d', 'SL');
-      add(preview.liq, '#fb923c', 'liq ≈');
+    return String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+  }
+  function snapCandleTime(ts) {
+    if (!(ts > 0) || !candles.length) return ts;
+    let best = candles[0].time, err = Math.abs(candles[0].time - ts);
+    for (let i = 0; i < candles.length; i++) {
+      const e = Math.abs(candles[i].time - ts);
+      if (e < err) { err = e; best = candles[i].time; }
     }
-    book.positions.forEach(p => {
-      const tag = p.id;
-      add(p.entry, p.side === 'short' ? '#fb7185' : '#4ade80', tag + ' вход', LWC.LineStyle.Solid);
-      if (p.tp) add(p.tp, '#2bf5a0', tag + ' TP');
-      if (p.sl) add(p.sl, '#ff4d6d', tag + ' SL');
-      if (p.liq) add(p.liq, '#fb923c', tag + ' liq');
+    return best;
+  }
+  function plotMetrics() {
+    if (!chart) return { plotW: 0, axisW: 64 };
+    const axisW = Math.max(48, chart.priceScale('right').width() || 64);
+    const plotW = chart.timeScale().width() || Math.max(0, ($('#focusChart').clientWidth || 0) - axisW);
+    return { plotW, axisW };
+  }
+
+  function bindOverlayClicks() {
+    const root = $('#tvOverlay');
+    if (!root || root._bound) return;
+    root._bound = true;
+    root.addEventListener('click', ev => {
+      const btn = ev.target.closest('[data-act]');
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const p = book.positions.find(x => x.id === btn.dataset.id);
+      if (!p) return;
+      const act = btn.dataset.act;
+      if (act === 'close') {
+        const px = lastPx();
+        if (!(px > 0)) return toast('Нет цены для закрытия');
+        closePosition(p, px, 'market', true);
+        toast(p.id + ' закрыт @ ' + fmtPx(px));
+        onPrice();
+      } else if (act === 'clear-sl') {
+        p.sl = null; save(); toast(p.id + ' · SL снят'); renderOverlay();
+      } else if (act === 'clear-tp') {
+        p.tp = null; save(); toast(p.id + ' · TP снят'); renderOverlay();
+      }
     });
   }
+
+  function ensureOverlay() {
+    const root = $('#tvLines');
+    if (!root) return;
+    bindOverlayClicks();
+    const sig = book.positions.map(p => [p.id, p.side, p.qty, p.entry, p.tp || '', p.sl || '', p.liq || ''].join(':')).join('|');
+    if (sig === overlaySig) return;
+    overlaySig = sig;
+    const html = [];
+    book.positions.forEach(p => {
+      const lc = p.side === 'short' ? TV.red : TV.green;
+      const qEntry = (p.side === 'short' ? '-' : '') + fmtQtyLabel(p.qty);
+      const qClose = fmtQtyLabel(p.qty);
+      html.push(
+        '<div class="tv-row" data-row="entry" data-id="' + esc(p.id) + '" style="--lc:' + lc + '">' +
+          '<div class="tv-hline"></div>' +
+          '<div class="tv-badge">' +
+            '<span class="tv-qty">' + esc(qEntry) + '</span>' +
+            '<span class="tv-pnl">+0.00 USD</span>' +
+            '<button type="button" class="tv-x" data-act="close" data-id="' + esc(p.id) + '" title="Закрыть позицию">×</button>' +
+          '</div>' +
+          '<div class="tv-axis"></div>' +
+        '</div>'
+      );
+      if (p.sl > 0) {
+        const kind = p.side === 'short' ? 'Buy STP' : 'Sell STP';
+        html.push(
+          '<div class="tv-row" data-row="sl" data-id="' + esc(p.id) + '" style="--lc:' + TV.blue + '">' +
+            '<div class="tv-hline"></div>' +
+            '<div class="tv-badge">' +
+              '<span class="tv-qty">' + esc(qClose) + '</span>' +
+              '<span class="tv-kind">' + kind + '</span>' +
+              '<button type="button" class="tv-x" data-act="clear-sl" data-id="' + esc(p.id) + '" title="Снять SL">×</button>' +
+            '</div>' +
+            '<div class="tv-axis"></div>' +
+          '</div>'
+        );
+      }
+      if (p.tp > 0) {
+        const kind = p.side === 'short' ? 'Buy LMT' : 'Sell LMT';
+        html.push(
+          '<div class="tv-row" data-row="tp" data-id="' + esc(p.id) + '" style="--lc:' + TV.blue + '">' +
+            '<div class="tv-hline"></div>' +
+            '<div class="tv-badge">' +
+              '<span class="tv-qty">' + esc(qClose) + '</span>' +
+              '<span class="tv-kind">' + kind + '</span>' +
+              '<button type="button" class="tv-x" data-act="clear-tp" data-id="' + esc(p.id) + '" title="Снять TP">×</button>' +
+            '</div>' +
+            '<div class="tv-axis"></div>' +
+          '</div>'
+        );
+      }
+      if (p.liq > 0) {
+        html.push(
+          '<div class="tv-row" data-row="liq" data-id="' + esc(p.id) + '" style="--lc:' + TV.orange + '">' +
+            '<div class="tv-hline dash"></div>' +
+            '<div class="tv-axis liq">liq ≈</div>' +
+          '</div>'
+        );
+      }
+    });
+    root.innerHTML = html.join('');
+  }
+
+  function placeRow(row, y, plotW, axisW, price) {
+    if (y == null || y < 0 || y > ($('#focusChart').clientHeight || 0)) {
+      row.style.visibility = 'hidden';
+      return;
+    }
+    row.style.visibility = 'visible';
+    row.style.top = y + 'px';
+    const line = row.querySelector('.tv-hline');
+    if (line) line.style.width = plotW + 'px';
+    const badge = row.querySelector('.tv-badge');
+    if (badge) badge.style.left = Math.max(110, plotW * 0.46) + 'px';
+    const axis = row.querySelector('.tv-axis');
+    if (axis) {
+      axis.style.width = axisW + 'px';
+      if (price > 0) axis.textContent = (axis.classList.contains('liq') ? 'liq ' : '') + fmtPx(price);
+    }
+  }
+
+  function updateMarkers() {
+    if (!series) return;
+    const marks = book.positions.map(p => {
+      let ts = p.entryTs;
+      if (!(ts > 0) && p.openedAt) ts = Math.floor(new Date(p.openedAt).getTime() / 1000);
+      if (!(ts > 0)) return null;
+      return {
+        time: snapCandleTime(ts),
+        position: p.side === 'short' ? 'aboveBar' : 'belowBar',
+        color: p.side === 'short' ? TV.red : TV.green,
+        shape: p.side === 'short' ? 'arrowDown' : 'arrowUp',
+        size: 1
+      };
+    }).filter(Boolean);
+    try { series.setMarkers(marks); } catch (e) { /* time mismatch */ }
+  }
+
+  function renderOverlay() {
+    if (!series || !chart) return;
+    ensureOverlay();
+    const { plotW, axisW } = plotMetrics();
+    const px = lastPx();
+    const lastEl = $('#tvLast');
+    if (lastEl && px > 0) {
+      const y = series.priceToCoordinate(px);
+      if (y == null) {
+        lastEl.hidden = true;
+      } else {
+        lastEl.hidden = false;
+        lastEl.style.top = y + 'px';
+        if (!lastEl._built) {
+          lastEl.innerHTML = '<div class="tv-last-line"></div><div class="tv-last-lab"><div class="tv-last-sym">XYZ100</div><div class="tv-last-col"><div class="tv-last-px"></div><div class="tv-last-cd"></div></div></div>';
+          lastEl._built = true;
+        }
+        const line = lastEl.querySelector('.tv-last-line');
+        if (line) line.style.width = plotW + 'px';
+        const labPx = lastEl.querySelector('.tv-last-px');
+        const labCd = lastEl.querySelector('.tv-last-cd');
+        if (labPx) labPx.textContent = fmtPx(px);
+        if (labCd) labCd.textContent = candleCountdown();
+      }
+    }
+    book.positions.forEach(p => {
+      const rows = $$('#tvLines .tv-row[data-id="' + CSS.escape(p.id) + '"]');
+      rows.forEach(row => {
+        const kind = row.dataset.row;
+        const price = kind === 'entry' ? p.entry : kind === 'sl' ? p.sl : kind === 'tp' ? p.tp : p.liq;
+        const y = price > 0 ? series.priceToCoordinate(price) : null;
+        placeRow(row, y, plotW, axisW, price);
+        if (kind === 'entry') {
+          const u = C.unrealized(p.side, p.entry, px, p.qty);
+          const pnl = row.querySelector('.tv-pnl');
+          if (pnl) {
+            pnl.textContent = fmtPnlUsd(u);
+            pnl.classList.toggle('neg', u < 0);
+          }
+        }
+      });
+    });
+    updateMarkers();
+  }
+  function drawLines() { renderOverlay(); }
+
+
 
   function plannedEntry() {
     const limit = +$('#inpLimit').value;
@@ -613,7 +812,8 @@
       liq: p.liq,
       tp: spec.tp > 0 ? +spec.tp : null,
       sl: spec.sl > 0 ? +spec.sl : null,
-      openedAt: nowIso()
+      openedAt: nowIso(),
+      entryTs: (candles.length ? candles[candles.length - 1].time : Math.floor(Date.now() / 1000))
     };
     book.positions.push(pos);
     if (!fromPending) save();
@@ -788,8 +988,11 @@
 
   function tickClock() {
     const el = $('#clock');
-    if (!el) return;
-    el.textContent = new Date().toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour12: false });
+    if (el) el.textContent = new Date().toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour12: false });
+    if (chart && series) {
+      const cd = document.querySelector('.tv-last-cd');
+      if (cd) cd.textContent = candleCountdown();
+    }
   }
 
   async function init() {
@@ -891,6 +1094,6 @@
     C, mkt, getBook: () => book, preview: () => preview, lastPx, plannedEntry, updateCalc,
     openPosition, closePosition, placeOrder, resetSilent() { book = defaultBook(); save(); onPrice(); },
     setForm(p) { Object.assign(form, p); if (p.side) setSide(p.side); if (p.typ) setTyp(p.typ); if (p.sizeMode) setMode(p.sizeMode); },
-    ready: () => lastPx() > 0, candleCount: () => candles.length, sizeChart
+    ready: () => lastPx() > 0, candleCount: () => candles.length, sizeChart, renderOverlay, fmtPnlUsd
   };
 })();

@@ -80,3 +80,34 @@
   .go{padding:14px 14px;font-size:15px}
   .seg-btn{padding:11px 10px}
 }
+
+/* TradingView-style chart surface and order overlays */
+.demo-page .focus-body.demo-chart-body,
+.demo-page #focusChart{background:#000}
+.demo-page .legend{display:none}
+.tv-overlay{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:hidden;font-family:'Trebuchet MS','Segoe UI',Arial,sans-serif}
+.tv-legend{position:absolute;top:8px;left:10px;z-index:5;color:#787B86;font-size:12px;font-weight:600;letter-spacing:.02em;pointer-events:none}
+.tv-row{position:absolute;left:0;right:0;height:0;z-index:3}
+.tv-hline{position:absolute;left:0;top:0;height:1px;transform:translateY(-50%);background:var(--lc,#F23645)}
+.tv-hline.dash{background:none;border-top:1px dashed var(--lc,#fb923c);height:0;opacity:.7}
+.tv-badge{position:absolute;top:0;display:inline-flex;align-items:stretch;height:24px;transform:translate(-50%,-50%);border:1px solid var(--lc,#F23645);border-radius:4px;background:#000;overflow:hidden;pointer-events:auto;white-space:nowrap;font-weight:700;font-size:12px;line-height:24px;z-index:4}
+.tv-qty{background:var(--lc,#F23645);color:#fff;padding:0 8px;display:flex;align-items:center;font-variant-numeric:tabular-nums}
+.tv-pnl{background:#000;padding:0 10px;display:flex;align-items:center;font-variant-numeric:tabular-nums;letter-spacing:.01em;color:#25E2B7}
+.tv-pnl.neg{color:#F23645}
+.tv-kind{background:#000;color:#fff;padding:0 10px;display:flex;align-items:center;font-weight:700}
+.tv-x{appearance:none;border:0;border-left:1px solid var(--lc,#F23645);background:#000;color:#B2B5BE;width:22px;padding:0;margin:0;cursor:pointer;font-family:inherit;font-size:14px;line-height:24px;display:flex;align-items:center;justify-content:center}
+.tv-x:hover{color:#fff;background:#1a1a1a}
+.tv-axis{position:absolute;top:0;right:0;transform:translateY(-50%);background:var(--lc,#F23645);color:#fff;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;padding:3px 7px;box-sizing:border-box;text-align:right;border-radius:2px 0 0 2px;z-index:4;pointer-events:none}
+.tv-axis.liq{background:transparent;color:#fb923c;border:1px dashed #fb923c;padding:1px 6px;font-weight:600;font-size:10px}
+.tv-last{position:absolute;left:0;right:0;height:0;z-index:2;pointer-events:none}
+.tv-last-line{position:absolute;left:0;top:0;height:1px;transform:translateY(-50%);background:repeating-linear-gradient(to right,#B2B5BE 0 2px,transparent 2px 6px)}
+.tv-last-lab{position:absolute;top:0;right:0;display:flex;align-items:center;transform:translateY(-50%);background:#fff;border-radius:3px;overflow:visible;box-shadow:0 1px 2px rgba(0,0,0,.4);z-index:6;min-height:32px}
+.tv-last-sym{display:flex;align-items:center;padding:0 8px;color:#131722;font-size:12px;font-weight:600;white-space:nowrap}
+.tv-last-col{display:flex;flex-direction:column;justify-content:center;padding:3px 8px 3px 4px;text-align:right;min-width:72px}
+.tv-last-px{display:block;color:#000;font-weight:700;font-size:13px;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tv-last-cd{display:block;color:#787B86;font-size:11px;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:700px){
+  .tv-badge{height:22px;font-size:11px;line-height:22px}
+  .tv-x{line-height:22px;width:20px}
+  .tv-legend{font-size:11px}
+}
