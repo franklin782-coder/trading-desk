@@ -328,20 +328,29 @@
     return { ok: true, margin: pos.margin, liq: pos.liq };
   }
 
+  function normalizeEquityLog(log) {
+    const list = (log || []).filter(function (p) {
+      return p && p.t > 0 && isFinite(+p.equity);
+    }).map(function (p) {
+      return { t: +p.t, equity: +p.equity };
+    });
+    list.sort(function (a, b) { return a.t - b.t; });
+    const bySec = Object.create(null);
+    list.forEach(function (p) {
+      bySec[Math.floor(p.t / 1000)] = p;
+    });
+    return Object.keys(bySec).map(Number).sort(function (a, b) { return a - b; }).map(function (sec) {
+      return bySec[sec];
+    });
+  }
+
   function snapshotEquity(book, marks, t) {
     const eq = equity(book, marks);
     const ts = t || nowMs();
     if (!book.equityLog) book.equityLog = [];
-    const log = book.equityLog;
-    const last = log[log.length - 1];
-    if (last && ts - last.t < 30000 && Math.abs(last.equity - eq) < 0.01) {
-      last.t = ts;
-      last.equity = eq;
-    } else {
-      log.push({ t: ts, equity: eq });
-    }
-    // cap ~ 60 days of 1-min points, but keep denser recent
-    if (log.length > 20000) book.equityLog = log.slice(log.length - 16000);
+    book.equityLog.push({ t: ts, equity: eq });
+    book.equityLog = normalizeEquityLog(book.equityLog);
+    if (book.equityLog.length > 20000) book.equityLog = book.equityLog.slice(book.equityLog.length - 16000);
     return eq;
   }
 
@@ -871,7 +880,7 @@
   }
 
   function equityAtOrBefore(book, t) {
-    const log = book.equityLog || [];
+    const log = normalizeEquityLog(book.equityLog || []);
     let eq = START;
     for (let i = 0; i < log.length; i++) {
       if (log[i].t <= t) eq = log[i].equity;
@@ -888,22 +897,12 @@
 
   function periodPnl(book, marks, now, windowMs) {
     const eqNow = equity(book, marks);
-    if (!windowMs) {
-      // all time: equity - start, which includes realized, funding, uPnL, fees
-      return eqNow - START;
-    }
-    const start = now - windowMs;
-    const eqThen = equityAtOrBefore(book, start);
-    // If we have a log point, use equity difference (includes uPnL path).
-    if ((book.equityLog || []).some(function (p) { return p.t <= start; })) {
-      return eqNow - eqThen;
-    }
-    const realized = sumBy(book.history, function (h) {
-      const t = Date.parse(h.closedAt || h.t) || 0;
-      return t >= start;
-    }, 'net');
-    const fund = sumBy(book.funding, function (f) { return (f.t || 0) >= start; }, 'payment');
-    return realized - fund + upnlTotal(book, marks);
+    // Equity change over the window, including realized + unrealized + fees + funding.
+    // All-time is current equity vs the starting $1M. If the account is newer than the
+    // window (no log point at or before the start), equityAtOrBefore returns START,
+    // so 24h/7d/30d match all-time.
+    if (!windowMs) return eqNow - START;
+    return eqNow - equityAtOrBefore(book, now - windowMs);
   }
 
   function portfolioStats(book, marks, now) {
@@ -929,7 +928,7 @@
       byMarket[id].volume += (h.entry || 0) * (h.qty || 0) + (h.exit || 0) * (h.qty || 0);
     });
     let peak = START, maxDd = 0, maxDdPct = 0;
-    (book.equityLog || []).forEach(function (p) {
+    normalizeEquityLog(book.equityLog || []).forEach(function (p) {
       if (p.equity > peak) peak = p.equity;
       const dd = peak - p.equity;
       if (dd > maxDd) { maxDd = dd; maxDdPct = peak > 0 ? (dd / peak) * 100 : 0; }
@@ -1067,7 +1066,7 @@
     defaultBook, migrateV1, loadFromStorage, saveToStorage,
     defaultUi, loadUi, saveUi, panesForLayout,
     nextId, usedMargin, upnlTotal, equity, totalMM, freeMargin,
-    snapshotEquity, applyFunding, openPosition, closePosition,
+    normalizeEquityLog, snapshotEquity, applyFunding, openPosition, closePosition,
     checkCrossLiquidation, checkIsolatedLiquidation, recordOrder, portfolioStats,
     periodPnl, csvTrades, csvFunding, csvOrders,
     dexOfCoin, adjustCash, cashOf, equityOf, freeOf, usedMarginOn, upnlOn, mmOn,

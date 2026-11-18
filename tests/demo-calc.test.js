@@ -210,5 +210,31 @@ almost(bars[1].open, 99, 0, 'next bar opens at prior close');
 almost(bars[1].close, 101, 0, 'second bar close');
 assert(M.isSubMinute('1s') && M.isSubMinute('15s') && M.isSubMinute('30s') && !M.isSubMinute('1m'), 'sub-minute flags');
 
+
+// Equity log must sort + dedupe; period PnL is always equity change
+const nowP = Date.UTC(2026, 10, 18, 16, 0, 0);
+const bookP = B.defaultBook();
+bookP.balance = 999000;
+bookP.equityLog = [
+  { t: nowP, equity: 1000000 },
+  { t: nowP - 20 * 86400000, equity: 990000 },
+  { t: nowP - 86400000, equity: 1012500 },
+  { t: nowP, equity: 999000 }
+];
+const nlog = B.normalizeEquityLog(bookP.equityLog);
+assert(nlog.every((pt, i) => i === 0 || pt.t > nlog[i - 1].t), 'normalized equity log is strictly increasing in time');
+assert(nlog.filter(pt => Math.floor(pt.t / 1000) === Math.floor(nowP / 1000)).length === 1, 'duplicate timestamps are deduped');
+almost(nlog[nlog.length - 1].equity, 999000, 0, 'last value at a duplicate second wins');
+almost(B.periodPnl(bookP, {}, nowP, 0), -1000, 0.01, 'all-time PnL is equity − start');
+almost(B.periodPnl(bookP, {}, nowP, 86400000), 999000 - 1012500, 0.01, '24h PnL is equity change vs the last log point at or before now−24h');
+almost(B.periodPnl(bookP, {}, nowP, 30 * 86400000), 999000 - 1000000, 0.01, '30d uses START when no log point precedes the window');
+
+const bookQ = B.defaultBook();
+bookQ.balance = 999500;
+bookQ.equityLog = [{ t: nowP - 1000, equity: 1000000 }, { t: nowP, equity: 999500 }];
+almost(B.periodPnl(bookQ, {}, nowP, 0), -500, 0.01, 'new account all-time');
+almost(B.periodPnl(bookQ, {}, nowP, 86400000), -500, 0.01, '24h equals all-time when the account is newer than 24h');
+almost(B.periodPnl(bookQ, {}, nowP, 7 * 86400000), -500, 0.01, '7d equals all-time when the account is newer than 7d');
+
 if (failed) { console.error('\n' + failed + ' failed'); process.exit(1); }
 console.log('\nall tests passed');

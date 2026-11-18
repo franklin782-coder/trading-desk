@@ -29,14 +29,31 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
 
+  function formatEquityAxis(price) {
+    const x = +price || 0;
+    const sign = x < 0 ? '-' : '';
+    return sign + '$' + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function equitySeries(book, marks) {
+    const log = (B.normalizeEquityLog ? B.normalizeEquityLog(book.equityLog || []) : (book.equityLog || [])).slice();
+    const nowEq = B.equity(book, marks);
+    const nowT = Date.now();
+    if (!log.length || log[log.length - 1].t < nowT - 2000) log.push({ t: nowT, equity: nowEq });
+    else log[log.length - 1] = { t: Math.max(log[log.length - 1].t, nowT), equity: nowEq };
+    const bySec = Object.create(null);
+    log.forEach(function (p) {
+      if (!p || !(p.t > 0) || !isFinite(+p.equity)) return;
+      bySec[Math.floor(p.t / 1000)] = +p.equity;
+    });
+    return Object.keys(bySec).map(Number).sort(function (a, b) { return a - b; }).map(function (time) {
+      return { time: time, value: bySec[time] };
+    });
+  }
+
   function renderEquity(el, book, marks) {
     if (!root.LightweightCharts || !el) return;
-    const log = (book.equityLog || []).slice();
-    const nowEq = B.equity(book, marks);
-    if (!log.length || log[log.length - 1].t < Date.now() - 2000) log.push({ t: Date.now(), equity: nowEq });
-    const data = log.map(function (p) {
-      return { time: Math.floor(p.t / 1000), value: p.equity };
-    }).filter(function (p, i, a) { return i === 0 || p.time >= a[i - 1].time; });
+    const data = equitySeries(book, marks);
     if (eqChart) {
       try { eqChart.remove(); } catch (e) { /* */ }
       eqChart = null;
@@ -47,11 +64,11 @@
       grid: { vertLines: { color: '#2A2A2A' }, horzLines: { color: '#2A2A2A' } },
       rightPriceScale: { borderColor: '#2A2A2A' },
       timeScale: { borderColor: '#2A2A2A', tickMarkFormatter: M.tickMarkFormatter, timeVisible: true },
-      localization: { timeFormatter: M.timeFormatter },
+      localization: { timeFormatter: M.timeFormatter, priceFormatter: formatEquityAxis },
       crosshair: { vertLine: { color: '#787B86' }, horzLine: { color: '#787B86' } },
       handleScroll: true, handleScale: true
     });
-    eqSeries = eqChart.addLineSeries({ color: '#22d3ee', lineWidth: 2 });
+    eqSeries = eqChart.addLineSeries({ color: '#22d3ee', lineWidth: 2, priceFormat: { type: 'custom', minMove: 0.01, formatter: formatEquityAxis } });
     if (data.length) eqSeries.setData(data);
     eqChart.timeScale().fitContent();
   }
@@ -130,7 +147,7 @@
     html += '<section class="panel" style="margin-top:12px"><div class="panel-head"><div class="ph-title">P&amp;L CALENDAR</div></div>';
     html += calendarHtml(stats, year, month) + '</section>';
 
-    html += '<section class="panel demo-book" style="margin-top:12px"><div class="panel-head tab-head"><div class="port-tabs" id="portTabs">';
+    html += '<section class="panel demo-book" style="margin-top:12px"><div class="panel-head tab-head"><div class="port-tabs book-tabs" id="portTabs">';
     [['pos', 'Positions'], ['ord', 'Open Orders'], ['hist', 'Trade History'], ['fund', 'Funding History'], ['oh', 'Order History']].forEach(function (t, i) {
       html += '<button type="button" class="' + (i === 0 ? 'on' : '') + '" data-ptab="' + t[0] + '">' + t[1] + '</button>';
     });

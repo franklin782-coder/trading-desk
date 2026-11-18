@@ -217,9 +217,10 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
 .port-hero{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .port-hero .stat b{font-size:16px}
 .port-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.9fr);gap:12px}
-.port-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:12px}
-.port-stats .kv span{font-size:9px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
-.port-stats .kv b{font-size:13px;font-variant-numeric:tabular-nums}
+.port-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;padding:14px 16px}
+.port-stats .kv{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.port-stats .kv span{font-size:9px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;line-height:1.2}
+.port-stats .kv b{font-size:13px;font-variant-numeric:tabular-nums;color:var(--tx);line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
 .eq-chart{height:240px;background:#000;border-radius:8px;position:relative}
 .cal-wrap{padding:12px 14px 16px}
 .cal-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
@@ -236,6 +237,8 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
 .cal-day.dn{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.35)}
 .cal-day.today{box-shadow:inset 0 0 0 1px var(--cy)}
 .port-tabs{display:flex;flex-wrap:wrap;gap:4px}
+.port-tabs button{appearance:none;-webkit-appearance:none;border:1px solid var(--line2);background:transparent;color:var(--mut);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:5px 8px;border-radius:6px;cursor:pointer}
+.port-tabs button.on{color:var(--cy);border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.1)}
 .csv-btns{display:flex;flex-wrap:wrap;gap:6px}
 
 @media (max-width:1100px){
@@ -251,9 +254,17 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
   .demo-layout,body.pro-view .demo-layout{grid-template-columns:1fr}
   .chart-grid{min-height:360px}
   .mkt-bar .mkt-search{flex:1 1 100%}
+  .mkt-chip{flex:1 1 calc(50% - 8px);min-width:0}
   .pane-head{padding-left:36px;flex-wrap:wrap}
-  .cal-day{min-height:56px;padding:4px}
+  .cal-day{min-height:56px;padding:4px;overflow:hidden}
+  .cal-day .pnl{font-size:10px}
+  .cal-nav{flex-wrap:wrap}
   .hdr-actions{order:5}
+  .demo-page .nav{flex-wrap:wrap}
+  .port-hero{grid-template-columns:1fr 1fr}
+  .port-stats{grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px}
+  .tab-head{align-items:flex-start}
+  .paper-table{font-size:11px}
 }
 
 /* Fill markers B / S (HTML fallback next to LWC arrows) */
