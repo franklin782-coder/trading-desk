@@ -25,7 +25,7 @@
     { id: 'longpos', label: 'Long position', hint: '' },
     { id: 'shortpos', label: 'Short position', hint: '' },
     { id: 'text', label: 'Text', hint: '' },
-    { id: 'measure', label: 'Measure', hint: 'Shift+Drag' },
+    { id: 'measure', label: 'Measure', hint: 'Shift+Click' },
     { id: 'brush', label: 'Brush', hint: '' }
   ];
   const TOGGLES = [
@@ -57,6 +57,7 @@
 
   const LS_V2 = 'td-demo-drawings-v2';
   let activeInst = null;
+  const INSTANCES = [];
 
   function allStore() {
     try { return JSON.parse(localStorage.getItem(LS_V2) || 'null') || {}; } catch (e) { return {}; }
@@ -81,6 +82,11 @@
   let undo = [];
   let draft = null;
   let measureTmp = null;
+  let measurePhase = null; // null | 'tracking' | 'fixed'
+  let measureHeld = false;
+  let measureStartXY = null;
+  let measureLab = null;
+  let chartInteractive = true;
   let dragging = null;
   let seq = 1;
   let svg, layer, toolbar, tipEl, capture, host;
@@ -118,7 +124,8 @@
     } catch (e) { /* */ }
   }
   function reloadCoin() {
-    selected = null; draft = null; measureTmp = null; dragging = null;
+    selected = null; draft = null; dragging = null;
+    clearMeasure();
     load();
     redraw();
   }
@@ -192,6 +199,29 @@
     return { t: +t, p: +p };
   }
 
+  function fromXYLoose(x, y) {
+    const strict = fromXY(x, y);
+    if (strict) return strict;
+    const c = chart(), s = series();
+    if (!c || !s) return null;
+    let t = c.timeScale().coordinateToTime(x);
+    let p = s.coordinateToPrice(y);
+    if (typeof t === 'object' && t && t.timestamp) t = t.timestamp;
+    const bars = candles();
+    if ((t == null || t === undefined) && bars.length) {
+      const tFirst = bars[0].time, tLast = bars[bars.length - 1].time;
+      const x0 = c.timeScale().timeToCoordinate(tFirst);
+      const x1 = c.timeScale().timeToCoordinate(tLast);
+      if (x0 != null && x1 != null && x1 !== x0) {
+        t = tFirst + ((x - x0) / (x1 - x0)) * (tLast - tFirst);
+      } else {
+        t = x < (x0 == null ? 0 : x0) ? tFirst : tLast;
+      }
+    }
+    if (t == null || p == null) return null;
+    return { t: +t, p: +p };
+  }
+
   function extendRay(a, b, bounds) {
     const dx = b.x - a.x, dy = b.y - a.y;
     if (dx === 0 && dy === 0) return b;
@@ -239,7 +269,7 @@
     if (id === 'hide') { hidden = !hidden; selected = hidden ? null : selected; syncToolbar(); redraw(); return; }
     tool = id;
     draft = null;
-    measureTmp = null;
+    clearMeasure();
     syncToolbar();
     updateCapture();
   }
@@ -253,9 +283,200 @@
   }
   function updateCapture() {
     if (!capture) return;
-    const need = tool !== 'cursor' || !!draft || !!dragging || !!measureTmp;
+    const tracking = measurePhase === 'tracking';
+    const need = tool !== 'cursor' || !!draft || !!dragging || tracking;
     capture.style.pointerEvents = need ? 'auto' : 'none';
-    if (layer) layer.classList.toggle('drawing', tool !== 'cursor');
+    if (layer) {
+      layer.classList.toggle('drawing', tool !== 'cursor' || tracking);
+      layer.classList.toggle('measuring', tracking);
+    }
+  }
+
+  function setChartInteractive(on) {
+    chartInteractive = !!on;
+    const c = chart();
+    if (!c) return;
+    try { c.applyOptions({ handleScroll: !!on, handleScale: !!on }); } catch (e) { /* */ }
+  }
+
+  function eventInPlot(ev) {
+    if (!host || !svg) return false;
+    if (ev.target && ev.target.closest && ev.target.closest('.tv-toolbar')) return false;
+    const r = svg.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  }
+
+  function fmtSpan(sec) {
+    sec = Math.abs(+sec || 0);
+    if (sec < 1) return '<1s';
+    if (sec < 60) return Math.round(sec) + 's';
+    if (sec < 3600) {
+      const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+      return s && m < 15 ? m + 'm ' + s + 's' : m + 'm';
+    }
+    if (sec < 86400) {
+      const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+      return m ? h + 'h ' + m + 'm' : h + 'h';
+    }
+    const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
+    return h ? d + 'd ' + h + 'h' : d + 'd';
+  }
+
+  function barCount(t0, t1) {
+    const a = Math.min(t0, t1), b = Math.max(t0, t1);
+    const bars = candles();
+    let n = bars.filter(function (z) { return z.time >= a && z.time <= b; }).length;
+    if (n >= 2) return n;
+    let iv = 60;
+    if (bars.length >= 2) {
+      const d = Math.abs(bars[bars.length - 1].time - bars[0].time);
+      iv = d / Math.max(1, bars.length - 1) || 60;
+    }
+    return Math.max(1, Math.round(Math.abs(b - a) / iv) + 1);
+  }
+
+  function fmtUsdSigned(n) {
+    if (!isFinite(n)) return '—';
+    const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+    return sign + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function measureInfo(d) {
+    if (!d || !d.points || !d.points[0] || !d.points[1]) return null;
+    const p0 = d.points[0].p, p1 = d.points[1].p;
+    const t0 = d.points[0].t, t1 = d.points[1].t;
+    const delta = p1 - p0;
+    const pct = p0 ? (delta / p0) * 100 : 0;
+    let tickSize = 0.01, qty = 0, side = 'long';
+    const ctx = opts && opts.getMeasureInfo && opts.getMeasureInfo();
+    if (ctx) {
+      if (ctx.tickSize > 0) tickSize = ctx.tickSize;
+      if (ctx.qty > 0) qty = ctx.qty;
+      if (ctx.side) side = ctx.side;
+    }
+    const ticks = tickSize > 0 ? Math.abs(delta) / tickSize : 0;
+    const pnl = side === 'short' ? qty * (p0 - p1) : qty * (p1 - p0);
+    return {
+      up: p1 >= p0, delta: delta, pct: pct, ticks: ticks,
+      bars: barCount(t0, t1), span: fmtSpan(t1 - t0),
+      pnl: pnl, hasPnl: qty > 0
+    };
+  }
+
+  function syncMeasureLabel(d) {
+    if (!measureLab || !layer) return;
+    const info = measureInfo(d);
+    const a = d && d.points && d.points[0] && toXY(d.points[0]);
+    const b = d && d.points && d.points[1] && toXY(d.points[1]);
+    if (!info || !a || !b) { measureLab.hidden = true; return; }
+    const sign = info.delta > 0 ? '+' : '';
+    const tickStr = (info.ticks >= 10 ? String(Math.round(info.ticks)) : info.ticks.toFixed(1)) + ' ticks';
+    let html = '<div class="m-delta">' + sign + info.delta.toFixed(Math.abs(info.delta) >= 100 ? 1 : 2) + '  (' + sign + info.pct.toFixed(2) + '%)</div>';
+    html += '<div class="m-sub">' + tickStr + '</div>';
+    html += '<div class="m-sub">' + info.bars + ' bars · ' + info.span + '</div>';
+    if (info.hasPnl) html += '<div class="m-sub">Est. PnL ' + fmtUsdSigned(info.pnl) + '</div>';
+    measureLab.innerHTML = html;
+    measureLab.classList.toggle('up', info.up);
+    measureLab.classList.toggle('dn', !info.up);
+    measureLab.hidden = false;
+    const lw = measureLab.offsetWidth || 140;
+    const lh = measureLab.offsetHeight || 70;
+    const maxW = layer.clientWidth || 0;
+    const maxH = layer.clientHeight || 0;
+    let lx = b.x + 10;
+    let ly = b.y - lh / 2;
+    if (lx + lw > maxW - 8) lx = b.x - lw - 10;
+    if (lx < 40) lx = 40;
+    if (ly < 8) ly = 8;
+    if (ly + lh > maxH - 8) ly = Math.max(8, maxH - lh - 8);
+    measureLab.style.left = lx + 'px';
+    measureLab.style.top = ly + 'px';
+  }
+
+  function clearOtherMeasures() {
+    INSTANCES.forEach(function (inst) {
+      if (inst !== api && inst.clearMeasure) inst.clearMeasure();
+    });
+  }
+
+  function startMeasureAt(ev) {
+    if (!svg) return false;
+    const xy = eventXY(ev);
+    const pt = fromXYLoose(xy.x, xy.y);
+    if (!pt) return false;
+    clearOtherMeasures();
+    activeInst = api;
+    measureTmp = { id: 'tmp', type: 'measure', points: [pt, { t: pt.t, p: pt.p }], color: '#2962FF' };
+    measurePhase = 'tracking';
+    measureHeld = true;
+    measureStartXY = { x: ev.clientX, y: ev.clientY };
+    dragging = { kind: 'measure' };
+    setChartInteractive(false);
+    updateCapture();
+    redraw();
+    return true;
+  }
+
+  function fixMeasure() {
+    if (!measureTmp || !measureTmp.points || !measureTmp.points[0] || !measureTmp.points[1]) {
+      clearMeasure();
+      return;
+    }
+    const a = toXY(measureTmp.points[0]), b = toXY(measureTmp.points[1]);
+    const moved = a && b && (Math.abs(a.x - b.x) > 2 || Math.abs(a.y - b.y) > 2);
+    const same = measureTmp.points[0].t === measureTmp.points[1].t && measureTmp.points[0].p === measureTmp.points[1].p;
+    if (!moved && same) { clearMeasure(); return; }
+    measurePhase = 'fixed';
+    measureHeld = false;
+    if (dragging && dragging.kind === 'measure') dragging = null;
+    setChartInteractive(true);
+    updateCapture();
+    redraw();
+  }
+
+  function clearMeasure() {
+    measureTmp = null;
+    measurePhase = null;
+    measureHeld = false;
+    measureStartXY = null;
+    if (dragging && dragging.kind === 'measure') dragging = null;
+    setChartInteractive(true);
+    if (measureLab) measureLab.hidden = true;
+    updateCapture();
+    if (svg) redraw();
+  }
+
+  function updateMeasureEnd(ev) {
+    if (measurePhase !== 'tracking' || !measureTmp || !svg) return;
+    const xy = eventXY(ev);
+    const pt = fromXYLoose(xy.x, xy.y);
+    if (!pt) return;
+    measureTmp.points[1] = pt;
+    redraw();
+  }
+
+  function onHostPointerDown(ev) {
+    if (ev.button !== 0 || isTyping(ev)) return;
+    if (!eventInPlot(ev)) return;
+    if (measurePhase === 'tracking') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      fixMeasure();
+      return;
+    }
+    if (measurePhase === 'fixed') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const again = ev.shiftKey || tool === 'measure';
+      clearMeasure();
+      if (again) startMeasureAt(ev);
+      return;
+    }
+    if (ev.shiftKey || tool === 'measure') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      startMeasureAt(ev);
+    }
   }
 
   function showTip(btn, ev) {
@@ -420,17 +641,11 @@
     } else if (d.type === 'measure' && pts[0] && pts[1]) {
       const x = Math.min(pts[0].x, pts[1].x), y = Math.min(pts[0].y, pts[1].y);
       const w = Math.abs(pts[1].x - pts[0].x), hh = Math.abs(pts[1].y - pts[0].y);
-      const r = svgEl('rect', { x, y, width: w, height: hh, fill: '#2962FF', 'fill-opacity': 0.12, stroke: '#2962FF', 'stroke-width': 1, 'stroke-dasharray': '4 3' });
+      const up = d.points[1].p >= d.points[0].p;
+      const colM = up ? '#2962FF' : '#F23645';
+      const r = svgEl('rect', { x: x, y: y, width: Math.max(w, 1), height: Math.max(hh, 1), fill: colM, 'fill-opacity': 0.16, stroke: colM, 'stroke-width': 1, 'stroke-dasharray': '4 3' });
       if (!isDraft) { r.setAttribute('data-id', d.id); r.classList.add('tv-hit'); r.style.pointerEvents = 'all'; }
       g.appendChild(r);
-      const bars = candles();
-      const t0 = Math.min(d.points[0].t, d.points[1].t), t1 = Math.max(d.points[0].t, d.points[1].t);
-      const nBars = bars.filter(b => b.time >= t0 && b.time <= t1).length;
-      const sec = Math.abs(d.points[1].t - d.points[0].t);
-      const timeStr = sec >= 86400 ? (sec / 86400).toFixed(1) + 'd' : sec >= 3600 ? (sec / 3600).toFixed(1) + 'h' : Math.round(sec / 60) + 'm';
-      const midX = x + w / 2, midY = y + hh / 2;
-      label(midX, midY - 6, fmtDelta(d.points[0].p, d.points[1].p), '#d1d4dc', 'middle');
-      label(midX, midY + 10, nBars + ' bars · ' + timeStr, '#B2B5BE', 'middle');
     } else if (d.type === 'brush' && pts.length) {
       const ok = pts.filter(Boolean);
       if (ok.length) {
@@ -473,6 +688,7 @@
     visibleDrawings().forEach(d => renderHandles(han, d));
     if (draft) renderItem(dft, draft, true);
     if (measureTmp) renderItem(dft, measureTmp, true);
+    syncMeasureLabel(measureTmp);
     updateCapture();
   }
 
@@ -553,14 +769,8 @@
     const pt = fromXY(x, y);
     if (!pt) return;
 
-    // Shift+drag measure from anywhere on the layer
-    if (ev.shiftKey && tool !== 'brush') {
-      ev.preventDefault();
-      ev.stopPropagation();
-      measureTmp = { id: 'tmp', type: 'measure', points: [pt, pt], color: '#2962FF' };
-      dragging = { kind: 'measure' };
-      updateCapture();
-      redraw();
+    if (measurePhase === 'tracking' || measurePhase === 'fixed' || ev.shiftKey || tool === 'measure') {
+      // Host capture handler owns the measure gesture.
       return;
     }
 
@@ -637,15 +847,14 @@
   }
 
   function onPointerMove(ev) {
-    if (!dragging && !draft && !measureTmp) return;
+    if (measurePhase === 'tracking' && measureTmp) {
+      updateMeasureEnd(ev);
+      return;
+    }
+    if (!dragging && !draft) return;
     const { x, y } = eventXY(ev);
     const pt = fromXY(x, y);
     if (!pt) return;
-    if (dragging && dragging.kind === 'measure' && measureTmp) {
-      measureTmp.points[1] = pt;
-      redraw();
-      return;
-    }
     if (dragging && dragging.kind === 'brush' && draft) {
       draft.points.push(pt);
       redraw();
@@ -689,15 +898,21 @@
   }
 
   function onPointerUp(ev) {
+    if (measureHeld && measurePhase === 'tracking' && measureTmp) {
+      measureHeld = false;
+      const sx = measureStartXY;
+      const moved = sx && (Math.abs(ev.clientX - sx.x) > 4 || Math.abs(ev.clientY - sx.y) > 4);
+      if (dragging && dragging.kind === 'measure') dragging = null;
+      if (moved) fixMeasure();
+      else { updateCapture(); redraw(); }
+      return;
+    }
     if (!dragging) return;
     if (dragging.kind === 'measure') {
-      if (tool === 'measure' && measureTmp && measureTmp.points[1]) {
-        const a = toXY(measureTmp.points[0]), b = toXY(measureTmp.points[1]);
-        if (a && b && (Math.abs(a.x - b.x) > 4 || Math.abs(a.y - b.y) > 4)) {
-          addDrawing({ type: 'measure', points: measureTmp.points.slice(), color: '#2962FF' });
-        }
-      }
-      measureTmp = null;
+      if (dragging && dragging.kind === 'measure') dragging = null;
+      updateCapture();
+      redraw();
+      return;
     }
     if (dragging.kind === 'brush' && draft) {
       finishDraft();
@@ -721,7 +936,7 @@
     const alt = ev.altKey, sh = ev.shiftKey, ctrl = ev.ctrlKey || ev.metaKey;
     if (ev.key === 'Escape') {
       ev.preventDefault();
-      if (draft || measureTmp) { draft = null; measureTmp = null; dragging = null; redraw(); return; }
+      if (draft || measureTmp || measurePhase) { draft = null; dragging = null; clearMeasure(); return; }
       if (selected) { selected = null; redraw(); return; }
       setTool('cursor');
       return;
@@ -775,6 +990,10 @@
     svg.appendChild(svgEl('g', { id: 'drawDraft' }));
     svg.appendChild(svgEl('g', { id: 'drawHandles' }));
     layer.appendChild(svg);
+    measureLab = document.createElement('div');
+    measureLab.className = 'tv-measure-lab';
+    measureLab.hidden = true;
+    layer.appendChild(measureLab);
     host.appendChild(layer);
     buildToolbar(host);
     syncToolbar();
@@ -783,23 +1002,7 @@
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKey, true);
-
-    // Shift+drag measure even when the capture rect is off (cursor mode)
-    host.addEventListener('pointerdown', ev => {
-      if (!ev.shiftKey || ev.button !== 0 || isTyping(ev)) return;
-      if (ev.target.closest && ev.target.closest('.tv-toolbar')) return;
-      if (tool !== 'cursor' && tool !== 'measure') return;
-      // handled on layer if events hit it; if they go to the chart, start measure here
-      if (ev.target.closest && ev.target.closest('.tv-draw-layer')) return;
-      ev.preventDefault();
-      const { x, y } = eventXY(ev);
-      const pt = fromXY(x, y);
-      if (!pt) return;
-      measureTmp = { id: 'tmp', type: 'measure', points: [pt, pt], color: '#2962FF' };
-      dragging = { kind: 'measure' };
-      updateCapture();
-      redraw();
-    }, true);
+    host.addEventListener('pointerdown', onHostPointerDown, true);
 
     redraw();
     requestAnimationFrame(redraw);
@@ -816,6 +1019,17 @@
     flags: () => ({ magnet, locked, hidden }),
     toXY, fromXY,
     reloadCoin,
+    clearMeasure,
+    measureState() {
+      return {
+        phase: measurePhase,
+        tool: tool,
+        hasTmp: !!measureTmp,
+        points: measureTmp && measureTmp.points ? measureTmp.points.map(function (p) { return { t: p.t, p: p.p }; }) : null,
+        label: measureLab && !measureLab.hidden ? (measureLab.innerText || '') : '',
+        interactive: chartInteractive
+      };
+    },
     activate() { activeInst = api; syncToolbar(); },
     candleSpan() {
       const c = candles();
@@ -832,6 +1046,7 @@
       };
     }
   };
+  INSTANCES.push(api);
   if (options) attach(options);
   if (!activeInst) activeInst = api;
   return api;

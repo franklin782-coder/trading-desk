@@ -45,6 +45,7 @@
   let side = 'long', tab = 'market', proType = 'stopMarket', tif = 'Gtc';
   let sizeMode = 'margin', marginMode = book.defaultMarginMode || 'cross';
   let leverage = 10, dragging = null;
+  let sizeSource = 'input', syncingSize = false;
 
   function coin() {
     const p = panes[activePane];
@@ -545,6 +546,23 @@
         getSeries: function () { return pane.series; },
         getCandles: function () { return candleCache[cacheKey(pane.coin, pane.tf)] || []; },
         getCoin: function () { return pane.coin; },
+        getMeasureInfo: function () {
+          const x = L(pane.coin);
+          const px = lastPx(pane.coin) || 0;
+          const sizeUsd = +(($('#inpSize') && $('#inpSize').value) || 0);
+          let qty = 0;
+          if (px > 0 && sizeUsd > 0) {
+            qty = sizeMode === 'margin' ? (sizeUsd * (leverage || 1)) / px : sizeUsd / px;
+          }
+          return {
+            tickSize: M.tickSize(x.szDecimals),
+            qty: qty,
+            sizeUsd: sizeUsd,
+            leverage: leverage,
+            sizeMode: sizeMode,
+            side: side
+          };
+        },
         host: root.querySelector('.demo-chart-body'),
         plotEl: function () { return pane.plot; }
       });
@@ -756,6 +774,7 @@
     $('#btnIso').classList.toggle('on', marginMode === 'isolated');
     const note = $('#calcNote');
     if (note) note.textContent = M.feeNote(c, feesOf(c)) + ' Liquidation is approximate (MM = half of IM at max leverage).';
+    refreshSizeSlider('lev');
   }
   function showTicketFields() {
     const typ = currentTyp();
@@ -772,6 +791,71 @@
       go.textContent = (side === 'short' ? 'Sell / Short' : 'Buy / Long');
       go.classList.toggle('short', side === 'short');
     }
+  }
+  function availableToTrade() {
+    const m = marksMap();
+    const dex = book.accountMode === 'standard' ? B.dexOfCoin(coin()) : undefined;
+    const free = B.freeOf(book, m, dex);
+    return Math.max(0, +free || 0);
+  }
+  function sizeBudget() {
+    const avail = availableToTrade();
+    return sizeMode === 'notional' ? avail * (leverage || 1) : avail;
+  }
+  function roundSizeUsd(n) {
+    n = +n || 0;
+    if (n >= 100) return Math.round(n * 100) / 100;
+    if (n >= 1) return Math.round(n * 100) / 100;
+    return Math.round(n * 10000) / 10000;
+  }
+  function currentSizePct() {
+    const budget = sizeBudget();
+    const usd = +$('#inpSize').value || 0;
+    if (!(budget > 0)) return usd > 0 ? 100 : 0;
+    return Math.max(0, Math.min(100, (usd / budget) * 100));
+  }
+  function setSliderUi(pct) {
+    const sl = $('#inpSizePct');
+    const lab = $('#sizePctVal');
+    const wrap = $('#sizeSliderWrap');
+    if (sl) sl.value = String(Math.round(+pct || 0));
+    if (lab) {
+      const shown = Math.round((+pct || 0) * 10) / 10;
+      lab.textContent = (Math.abs(shown - Math.round(shown)) < 0.05 ? String(Math.round(shown)) : shown.toFixed(1)) + '%';
+    }
+    if (wrap) wrap.style.setProperty('--pct', Math.max(0, Math.min(100, +pct || 0)) + '%');
+    $$('#sizeTicks [data-pct]').forEach(function (b) {
+      b.classList.toggle('on', Math.abs(+b.getAttribute('data-pct') - pct) < 0.51);
+    });
+    const availLab = $('#sizeAvailLab');
+    const availUsd = $('#sizeAvailUsd');
+    if (availLab) availLab.textContent = sizeMode === 'notional' ? 'max position' : 'available margin';
+    if (availUsd) availUsd.textContent = fmtUsd(sizeBudget());
+  }
+  function applySizePct(pct, skipCalc) {
+    pct = Math.max(0, Math.min(100, +pct || 0));
+    sizeSource = 'slider';
+    syncingSize = true;
+    const el = $('#inpSize');
+    if (el) el.value = String(roundSizeUsd(sizeBudget() * (pct / 100)));
+    setSliderUi(pct);
+    syncingSize = false;
+    if (!skipCalc) updateCalc();
+  }
+  function snapSizePct(pct) {
+    const snaps = [0, 25, 50, 75, 100];
+    for (let i = 0; i < snaps.length; i++) {
+      if (Math.abs(pct - snaps[i]) <= 2) return snaps[i];
+    }
+    return pct;
+  }
+  function refreshSizeSlider(reason) {
+    if (!$('#inpSizePct')) return;
+    if ((reason === 'lev' || reason === 'mode' || reason === 'balance') && sizeSource === 'slider') {
+      applySizePct(+$('#inpSizePct').value, true);
+      return;
+    }
+    setSliderUi(currentSizePct());
   }
   function updateCalc() {
     const c = coin(), x = L(c), entry = plannedEntry(), sizeUsd = +$('#inpSize').value;
@@ -798,6 +882,7 @@
         return '<tr><td>' + s.label + '</td><td>' + fmtPx(s.price, c) + '</td><td class="' + clsPnL(s.net) + '">' + signedUsd(s.net) + '</td><td class="' + clsPnL(s.roe) + '">' + (s.roe > 0 ? '+' : '') + s.roe.toFixed(2) + '%</td></tr>';
       }).join('');
     }
+    if (!syncingSize) refreshSizeSlider('calc');
   }
   function syncLinked(which, from) {
     const entry = plannedEntry();
@@ -833,6 +918,7 @@
     set('#hdrEq', fmtUsd(eq));
     set('#hdrFree', fmtUsd(free));
     set('#hdrUpnl', signedUsd(upnl), clsPnL(upnl));
+    refreshSizeSlider('calc');
   }
   function renderMarketBar() {
     const bar = $('#mktBar'); if (!bar) return;
@@ -1125,14 +1211,27 @@
     });
     $('#btnCross').onclick = function () { marginMode = 'cross'; book.defaultMarginMode = 'cross'; persist(); syncTicketHeader(); };
     $('#btnIso').onclick = function () { marginMode = 'isolated'; book.defaultMarginMode = 'isolated'; persist(); syncTicketHeader(); };
-    $('#btnMargin').onclick = function () { sizeMode = 'margin'; $('#btnMargin').classList.add('on'); $('#btnNotional').classList.remove('on'); $('#sizeLabel').textContent = 'Margin, USD'; updateCalc(); };
-    $('#btnNotional').onclick = function () { sizeMode = 'notional'; $('#btnNotional').classList.add('on'); $('#btnMargin').classList.remove('on'); $('#sizeLabel').textContent = 'Position size, USD'; updateCalc(); };
+    $('#btnMargin').onclick = function () { sizeMode = 'margin'; $('#btnMargin').classList.add('on'); $('#btnNotional').classList.remove('on'); $('#sizeLabel').textContent = 'Margin, USD'; refreshSizeSlider('mode'); updateCalc(); };
+    $('#btnNotional').onclick = function () { sizeMode = 'notional'; $('#btnNotional').classList.add('on'); $('#btnMargin').classList.remove('on'); $('#sizeLabel').textContent = 'Position size, USD'; refreshSizeSlider('mode'); updateCalc(); };
     $$('#quickSize button').forEach(function (b) {
-      b.addEventListener('click', function () { $('#inpSize').value = b.getAttribute('data-q'); updateCalc(); });
+      b.addEventListener('click', function () { sizeSource = 'quick'; $('#inpSize').value = b.getAttribute('data-q'); updateCalc(); });
     });
     ['inpSize', 'inpLimit', 'inpTrigger'].forEach(function (id) {
-      const el = $('#' + id); if (el) el.addEventListener('input', updateCalc);
+      const el = $('#' + id); if (!el) return;
+      el.addEventListener('input', function () {
+        if (id === 'inpSize' && !syncingSize) sizeSource = 'input';
+        updateCalc();
+      });
     });
+    (function bindSizeSlider() {
+      const sl = $('#inpSizePct');
+      if (!sl) return;
+      sl.addEventListener('input', function () { applySizePct(+sl.value); });
+      sl.addEventListener('change', function () { applySizePct(snapSizePct(+sl.value)); });
+      $$('#sizeTicks [data-pct]').forEach(function (b) {
+        b.addEventListener('click', function () { applySizePct(+b.getAttribute('data-pct')); });
+      });
+    })();
     $('#inpTpPx').addEventListener('input', function () { syncLinked('tp', 'px'); });
     $('#inpTpPct').addEventListener('input', function () { syncLinked('tp', 'pct'); });
     $('#inpSlPx').addEventListener('input', function () { syncLinked('sl', 'px'); });
@@ -1204,7 +1303,7 @@
       leverage = +$('#inpLev').value;
       const mm = $('#levModalMm .seg-btn.on');
       if (mm) marginMode = mm.getAttribute('data-mm');
-      $('#levModal').close(); syncTicketHeader(); updateCalc();
+      $('#levModal').close(); syncTicketHeader(); refreshSizeSlider('lev'); updateCalc();
     };
     $('#inpLev').addEventListener('input', function () { $('#levModalVal').textContent = this.value + 'x'; $('#levVal').textContent = this.value + 'x'; });
     $$('#levModalMm [data-mm]').forEach(function (b) {
@@ -1261,7 +1360,7 @@
     resetSilent: function () { book = B.defaultBook(); persist(); renderAll(); },
     setForm: function (o) {
       if (o.side) { side = o.side; $('#btnLong').classList.toggle('on', side === 'long'); $('#btnShort').classList.toggle('on', side === 'short'); }
-      if (o.size != null) $('#inpSize').value = o.size;
+      if (o.size != null) { sizeSource = 'input'; $('#inpSize').value = o.size; }
       if (o.lev != null) leverage = o.lev;
       if (o.tp != null) $('#inpTpPx').value = o.tp;
       if (o.sl != null) $('#inpSlPx').value = o.sl;
@@ -1279,7 +1378,12 @@
     fmtPnlUsd: fmtPnlUsd,
     Draw: function () { return window.DemoDraw; },
     activeCoin: coin,
-    tf: function (i) { return panes[i || 0] && panes[i || 0].tf; }
+    tf: function (i) { return panes[i || 0] && panes[i || 0].tf; },
+    availableToTrade: availableToTrade,
+    sizeBudget: sizeBudget,
+    sizeMode: function () { return sizeMode; },
+    leverage: function () { return leverage; },
+    sizePct: currentSizePct
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

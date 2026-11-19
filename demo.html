@@ -9,8 +9,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2322d3ee'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2305070d'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261119a">
-<link rel="stylesheet" href="demo.css?v=20261119a">
+<link rel="stylesheet" href="style.css?v=20261119b">
+<link rel="stylesheet" href="demo.css?v=20261119b">
 </head>
 <body class="demo-page">
 <div class="bg-grid" aria-hidden="true"></div>
@@ -154,6 +154,17 @@
         <span id="sizeLabel">Margin, USD</span>
         <input type="number" id="inpSize" step="any" min="0" inputmode="decimal" value="100000">
       </label>
+      <div class="size-slider" id="sizeSliderWrap">
+        <input type="range" id="inpSizePct" min="0" max="100" step="1" value="0" aria-label="Size as percent of available">
+        <div class="size-ticks" id="sizeTicks" aria-hidden="true">
+          <button type="button" data-pct="0">0%</button>
+          <button type="button" data-pct="25">25%</button>
+          <button type="button" data-pct="50">50%</button>
+          <button type="button" data-pct="75">75%</button>
+          <button type="button" data-pct="100">100%</button>
+        </div>
+        <div class="size-avail"><b id="sizePctVal">0%</b><span><span id="sizeAvailLab">available margin</span> <span id="sizeAvailUsd">$0.00</span></span></div>
+      </div>
       <div class="quick" id="quickSize">
         <button type="button" data-q="10000">$10k</button>
         <button type="button" data-q="50000">$50k</button>
@@ -297,11 +308,11 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-<script src="js/demo-calc.js?v=20261119a"></script>
-<script src="js/demo-markets.js?v=20261119a"></script>
-<script src="js/demo-book.js?v=20261119a"></script>
-<script src="js/demo-draw.js?v=20261119a"></script>
-<script src="js/demo-portfolio.js?v=20261119a"></script>
-<script src="js/demo.js?v=20261119a"></script>
+<script src="js/demo-calc.js?v=20261119b"></script>
+<script src="js/demo-markets.js?v=20261119b"></script>
+<script src="js/demo-book.js?v=20261119b"></script>
+<script src="js/demo-draw.js?v=20261119b"></script>
+<script src="js/demo-portfolio.js?v=20261119b"></script>
+<script src="js/demo.js?v=20261119b"></script>
 </body>
 </html>
