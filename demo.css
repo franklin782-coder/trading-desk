@@ -166,10 +166,9 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
 .mkt-chip .mc-chg{font-size:11px;margin-left:6px}
 .mkt-search{position:relative;flex:0 0 200px}
 .mkt-search input{width:100%;background:rgba(5,7,13,.75);border:1px solid var(--line2);color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 10px;border-radius:10px}
-.mkt-drop{position:fixed;z-index:200;top:auto;left:auto;right:auto;margin-top:0;min-width:220px;max-width:calc(100vw - 16px);max-height:min(420px,70vh);background:#0d111c;border:1px solid var(--line2);border-radius:10px;overflow:auto;-webkit-overflow-scrolling:touch;box-shadow:0 8px 24px rgba(0,0,0,.45)}
-.mkt-drop button{display:flex;justify-content:space-between;gap:8px;width:100%;appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--tx);font-family:var(--mono);font-size:12px;padding:10px 12px;cursor:pointer;touch-action:manipulation;text-align:left}
-.mkt-drop button:hover,.mkt-drop button:active{background:rgba(34,211,238,.08)}
-.pane-mkt,.pane-head .tf button{touch-action:manipulation;-webkit-tap-highlight-color:rgba(34,211,238,.18)}
+.mkt-drop{position:absolute;z-index:30;top:100%;left:0;right:0;background:#0d111c;border:1px solid var(--line2);border-radius:10px;margin-top:4px;max-height:280px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.mkt-drop button{display:flex;justify-content:space-between;gap:8px;width:100%;appearance:none;border:0;background:transparent;color:var(--tx);font-family:var(--mono);font-size:12px;padding:8px 10px;cursor:pointer}
+.mkt-drop button:hover{background:rgba(34,211,238,.08)}
 
 .seg.three{grid-template-columns:1fr 1fr 1fr}
 .chk{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mut);cursor:pointer}
@@ -256,9 +255,7 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
   .chart-grid{min-height:360px}
   .mkt-bar .mkt-search{flex:1 1 100%}
   .mkt-chip{flex:1 1 calc(50% - 8px);min-width:0}
-  .pane-head{padding-left:36px;flex-wrap:wrap;z-index:9}
-  .pane-mkt{padding:8px 10px;font-size:13px;min-height:36px}
-  .pane-head .tf button{padding:6px 8px;min-height:32px;font-size:11px}
+  .pane-head{padding-left:36px;flex-wrap:wrap}
   .cal-day{min-height:56px;padding:4px;overflow:hidden}
   .cal-day .pnl{font-size:10px}
   .cal-nav{flex-wrap:wrap}
