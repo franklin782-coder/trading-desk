@@ -138,7 +138,8 @@
     chartLines: { entry: true, tp: true, sl: true, liq: true },
     mktQuery: '',
     bookTab: 'positions',
-    rightTab: 'trade'
+    rightTab: 'trade',
+    aboutOpen: false
   };
 
   let book = { balance: START_BAL, positions: [], pending: [], history: [], seq: 1 };
@@ -958,8 +959,8 @@
         barSpacing: 8, minBarSpacing: 3, rightOffset: 6
       },
       crosshair: { vertLine: { color: '#333', labelBackgroundColor: '#222' }, horzLine: { color: '#333', labelBackgroundColor: '#222' } },
-      handleScroll: { pinch: true, mouseWheel: true },
-      handleScale: { pinch: true, axisPressedMouseMove: true }
+      handleScroll: { pinch: true, mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { price: true, time: true }, axisDoubleClickReset: { price: true, time: true } }
     };
   }
   function candleStyle() {
@@ -973,6 +974,39 @@
   function sizeChart() {
     if (chart && $('chart')) chart.applyOptions({ width: $('chart').clientWidth, height: $('chart').clientHeight });
   }
+  function bindChartResize() {
+    const el = $('chartWrap') || $('chart');
+    if (!el || el._tdRo || typeof ResizeObserver === 'undefined') return;
+    el._tdRo = new ResizeObserver(function () {
+      sizeChart();
+      renderOverlay();
+      renderDrawings();
+    });
+    el._tdRo.observe(el);
+  }
+  function chartViewDebug() {
+    if (!chart) return null;
+    try {
+      const vr = chart.timeScale().getVisibleLogicalRange();
+      const host = $('chart') || $('chartWrap');
+      let pTop = null, pBot = null;
+      if (series && host) {
+        pTop = series.coordinateToPrice(0);
+        pBot = series.coordinateToPrice(host.clientHeight || 0);
+      }
+      const tool = document.querySelector('#chartTools [data-tool].on');
+      return {
+        from: vr && vr.from, to: vr && vr.to,
+        span: vr ? (vr.to - vr.from) : null,
+        pTop: pTop, pBot: pBot,
+        w: host && host.clientWidth, h: host && host.clientHeight,
+        live: !chartPanOff,
+        tool: tool ? tool.getAttribute('data-tool') : null,
+        about: !!(document.getElementById('aboutPanel') && document.getElementById('aboutPanel').classList.contains('open'))
+      };
+    } catch (e) { return { error: String(e), live: !chartPanOff }; }
+  }
+  window.__tdChartView = chartViewDebug;
   function tfSeconds(tf) {
     return (TF_MS[tf || state.tf] || 60e3) / 1000;
   }
@@ -1058,6 +1092,8 @@
     host.innerHTML = '';
     chart = LightweightCharts.createChart(host, Object.assign({ width: host.clientWidth, height: host.clientHeight }, chartOptions()));
     series = chart.addCandlestickSeries(candleStyle());
+    bindChartResize();
+    sizeChart();
     chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
       renderOverlay(); renderDrawings();
       maybeLoadOlder(range);
@@ -1671,6 +1707,10 @@
       const b = ev.target.closest('[data-book]');
       if (b) setBookTab(b.getAttribute('data-book'));
     });
+    if ($('assetTabs')) $('assetTabs').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-atab="about"]');
+      if (b) toggleAbout();
+    });
     if ($('obTabs')) $('obTabs').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-obtab]');
       if (!b) return;
@@ -1915,6 +1955,7 @@
   function syncDesktopLayout() {
     const desk = isDesktop();
     document.body.classList.toggle('is-desk', desk);
+    setAboutOpen(desk ? true : state.aboutOpen);
     if (desk) {
       if ($('orderScrim')) $('orderScrim').hidden = true;
       setRightTab(state.rightTab || 'trade');
@@ -2417,6 +2458,35 @@
     return perYear * 100;
   }
 
+  function setAboutOpen(on) {
+    state.aboutOpen = !!on;
+    const desk = isDesktop();
+    const panel = $('aboutPanel');
+    const btn = document.querySelector('#assetTabs [data-atab="about"]');
+    const screen = $('screenAsset');
+    if (desk) {
+      if (panel) panel.classList.add('open');
+      if (btn) { btn.classList.add('on'); btn.setAttribute('aria-expanded', 'true'); }
+      if (screen) screen.classList.remove('about-open');
+      return;
+    }
+    if (panel) panel.classList.toggle('open', state.aboutOpen);
+    if (btn) {
+      btn.classList.toggle('on', state.aboutOpen);
+      btn.setAttribute('aria-expanded', state.aboutOpen ? 'true' : 'false');
+    }
+    if (screen) screen.classList.toggle('about-open', state.aboutOpen);
+    requestAnimationFrame(function () {
+      sizeChart();
+      renderOverlay();
+      renderDrawings();
+    });
+  }
+  function toggleAbout() {
+    if (isDesktop()) return;
+    setAboutOpen(!state.aboutOpen);
+  }
+
   function renderAbout() {
     const box = $('aboutPanel');
     if (!box) return;
@@ -2458,6 +2528,7 @@
       try { await navigator.clipboard.writeText('$' + ticker); toast('Copied $' + ticker); }
       catch (e) { toast('Could not copy'); }
     };
+    setAboutOpen(isDesktop() ? true : state.aboutOpen);
   }
 
   /* ——— drawings + long-press limit ——— */
@@ -2488,13 +2559,28 @@
     return p > 0 ? p : null;
   }
 
+  function chartLiveOpts() {
+    return {
+      handleScroll: { pinch: true, mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { price: true, time: true }, axisDoubleClickReset: { price: true, time: true } }
+    };
+  }
   function setChartInteractive(on) {
     if (!chart) return;
     chartPanOff = !on;
-    chart.applyOptions({
-      handleScroll: on ? { pinch: true, mouseWheel: true } : false,
-      handleScale: on ? { pinch: true, axisPressedMouseMove: true } : false
-    });
+    if (on) chart.applyOptions(chartLiveOpts());
+    else chart.applyOptions({ handleScroll: false, handleScale: false });
+  }
+  function restoreChartInteractive() {
+    setChartInteractive(true);
+  }
+  function finishDrawing() {
+    pendingTrend = null;
+    drawTool = 'cursor';
+    const list = $('toolList');
+    if (list) list.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-tool') === 'cursor'));
+    restoreChartInteractive();
+    renderDrawings();
   }
 
   function renderDrawings() {
@@ -2706,8 +2792,55 @@
     let moved = false;
 
     let dragLimit = null;
+    const activePtrs = new Set();
+    function cancelLongPress() {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = 0; }
+    }
+    function axisHit(pt) {
+      const w = host.clientWidth || 0, h = host.clientHeight || 0;
+      let rw = 60, th = 28;
+      try {
+        if (chart && chart.priceScale) {
+          const pw = chart.priceScale('right').width();
+          if (pw > 0) rw = Math.max(48, pw + 4);
+        }
+      } catch (e) { /* */ }
+      return (w > 0 && pt.x >= w - rw) || (h > 0 && pt.y >= h - th);
+    }
+    function resetTouchState(opts) {
+      const abort = !opts || opts.abort !== false;
+      cancelLongPress();
+      start = null;
+      if (abort) {
+        dragLimit = null;
+        pendingTrend = null;
+        if (crosshair && crosshair.drag) {
+          crosshair.drag = false;
+          crosshair.pinned = true;
+        }
+      }
+      restoreChartInteractive();
+    }
+    function releasePinch() {
+      cancelLongPress();
+      start = null;
+      dragLimit = null;
+      if (crosshair && crosshair.drag) { crosshair.drag = false; crosshair.pinned = true; }
+      restoreChartInteractive();
+    }
     function onDown(ev) {
-      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn') || ev.target.closest('.tv-x'))) return;
+      /* A new primary pointer means the previous gesture is over — drop stale ids
+         so a lost pointerup on iOS cannot leave the chart in a multi-touch lock. */
+      if (ev.isPrimary) activePtrs.clear();
+      if (ev.pointerId != null) activePtrs.add(ev.pointerId);
+      if (activePtrs.size > 1) {
+        releasePinch();
+        return;
+      }
+      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn') || ev.target.closest('.tv-x'))) {
+        restoreChartInteractive();
+        return;
+      }
       const dragEl = ev.target.closest && ev.target.closest('[data-drag-limit]');
       if (dragEl) {
         ev.preventDefault();
@@ -2718,9 +2851,18 @@
         return;
       }
       const pt = localXY(ev, host);
+      /* Price and time scales belong to Lightweight Charts — never steal them. */
+      if (drawTool === 'cursor' && axisHit(pt)) {
+        cancelLongPress();
+        start = null;
+        restoreChartInteractive();
+        return;
+      }
+      /* Unstick a dead chart on a fresh tap before we maybe take over a long-press. */
+      if (drawTool === 'cursor') restoreChartInteractive();
       start = { x: pt.x, y: pt.y, t: Date.now(), shift: !!(ev.shiftKey && ev.pointerType !== 'touch'), btn: ev.button };
       moved = false;
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = 0; }
+      cancelLongPress();
       const useMeasure = drawTool === 'measure' || (start.shift && ev.button === 0);
       if (useMeasure) {
         ev.preventDefault();
@@ -2738,7 +2880,8 @@
       if (!(isDesktop() && ev.pointerType !== 'touch')) {
         longPressTimer = setTimeout(() => {
           longPressTimer = 0;
-          if (!start || moved) return;
+          if (!start || moved || activePtrs.size !== 1) return;
+          if (axisHit(start)) { restoreChartInteractive(); return; }
           const price = priceAtY(start.y);
           if (!(price > 0)) return;
           setChartInteractive(false);
@@ -2748,6 +2891,10 @@
       }
     }
     function onMove(ev) {
+      if (activePtrs.size > 1) {
+        releasePinch();
+        return;
+      }
       if (!start) return;
       const pt = localXY(ev, host);
       if (Math.hypot(pt.x - start.x, pt.y - start.y) > 8) moved = true;
@@ -2791,34 +2938,46 @@
       }
     }
     function onUp(ev) {
+      if (ev.pointerId != null) activePtrs.delete(ev.pointerId);
+      if (activePtrs.size > 0) {
+        cancelLongPress();
+        start = null;
+        restoreChartInteractive();
+        return;
+      }
       const pt = localXY(ev, host);
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = 0; }
+      cancelLongPress();
       if (measure && measure.a) {
         measure.b = { x: pt.x, y: pt.y, price: priceAtY(pt.y), time: timeAtX(pt.x) };
-        renderDrawings();
         start = null;
-        if (drawTool !== 'measure') setChartInteractive(true);
+        const keep = measure;
+        finishDrawing();
+        measure = keep;
+        renderDrawings();
         return;
       }
       if (dragLimit) {
-        setChartInteractive(true);
         dragLimit = null;
         start = null;
+        restoreChartInteractive();
         return;
       }
       if (crosshair && crosshair.drag) {
         crosshair.drag = false;
         crosshair.pinned = true;
         start = null;
-        setChartInteractive(true);
+        restoreChartInteractive();
         return;
       }
       if (drawTool === 'hline' && start && !moved) {
         const price = priceAtY(pt.y);
         if (price > 0) {
           coinDraws().push({ id: 'd' + Date.now(), type: 'hline', price: price, color: drawColor });
-          saveDrawings(); renderDrawings();
+          saveDrawings();
         }
+        start = null;
+        finishDrawing();
+        return;
       } else if (drawTool === 'trend') {
         const price = priceAtY(pt.y), time = timeAtX(pt.x);
         if (!pendingTrend) {
@@ -2830,8 +2989,13 @@
             t2: time, p2: price, color: drawColor
           });
           pendingTrend = null;
-          saveDrawings(); renderDrawings();
+          saveDrawings();
+          start = null;
+          finishDrawing();
+          return;
         }
+        start = null;
+        return;
       } else if (drawTool === 'cursor' && start && !moved) {
         const hit = hitDrawing(pt.x, pt.y);
         if (hit) {
@@ -2858,6 +3022,7 @@
         }
       }
       start = null;
+      if (drawTool === 'cursor') restoreChartInteractive();
     }
 
     function onHover(ev) {
@@ -2869,9 +3034,24 @@
       if (ev.target.closest && (ev.target.closest('#chartWrap') || ev.target.closest('#limitOrderBtn'))) return;
       clearCrosshair();
     }, true);
+    function onCancel(ev) {
+      if (ev && ev.pointerId != null) activePtrs.delete(ev.pointerId);
+      activePtrs.clear();
+      resetTouchState({ abort: true });
+    }
     host.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    host.addEventListener('lostpointercapture', onCancel);
+    window.addEventListener('touchcancel', onCancel, { passive: true });
+    host.addEventListener('touchstart', function (ev) {
+      if (ev.touches && ev.touches.length > 1) releasePinch();
+    }, { passive: true });
+    window.addEventListener('blur', function () { onCancel({}); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) onCancel({});
+    });
     host.addEventListener('pointermove', onHover);
     host.addEventListener('pointerleave', onLeave);
     host.addEventListener('contextmenu', (ev) => {
