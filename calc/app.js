@@ -782,6 +782,7 @@
     state.coin = coin.id;
     state.livePrice = null;
     lastTickAt = 0;
+    pendingTick = null;
     clearCrosshair();
     resetOrderBook();
     state.lev = clampLev(state.lev);
@@ -956,7 +957,7 @@
       rightPriceScale: { borderColor: '#1a1a1a', scaleMargins: { top: 0.08, bottom: 0.12 } },
       timeScale: {
         borderColor: '#1a1a1a', timeVisible: true, secondsVisible: state.tf === '1m',
-        barSpacing: 8, minBarSpacing: 3, rightOffset: 6
+        barSpacing: 8, minBarSpacing: 0.25, rightOffset: 6
       },
       crosshair: { vertLine: { color: '#333', labelBackgroundColor: '#222' }, horzLine: { color: '#333', labelBackgroundColor: '#222' } },
       handleScroll: { pinch: true, mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
@@ -1068,10 +1069,79 @@
     return Array.from(map.values()).sort((a, b) => a.time - b.time);
   }
   function showRecentBars() {
+    /* Initial view only (symbol / TF change). Never call this on ticks, pinch, or backfill. */
     if (!chart || !bars.length) return;
-    const vis = state.tf === '1m' ? 180 : state.tf === '5m' ? 160 : state.tf === '15m' ? 140 : 120;
+    const host = $('chart');
+    const w = (host && host.clientWidth) || 400;
+    const target = 8;
+    const vis = Math.max(50, Math.min(160, Math.round(Math.max(80, w - 56) / target)));
     const from = Math.max(0, bars.length - vis);
     try { chart.timeScale().setVisibleLogicalRange({ from: from, to: bars.length + 4 }); } catch (e) { /* */ }
+  }
+  function fillBarGap(untilTime) {
+    const step = tfSeconds(state.tf);
+    if (!series || !bars.length || !step || !(untilTime > 0)) return;
+    const last = bars[bars.length - 1];
+    if (!last || untilTime <= last.time + step / 2) return;
+    const gap = Math.round((untilTime - last.time) / step) - 1;
+    if (gap <= 0) return;
+    if (gap > 5) {
+      scheduleHoleFill();
+      return;
+    }
+    const px = last.close;
+    for (let t = last.time + step; t < untilTime - step / 2; t += step) {
+      const bar = { time: t, open: px, high: px, low: px, close: px };
+      bars.push(bar);
+      series.update(bar);
+    }
+  }
+  let holeFillTimer = 0;
+  function scheduleHoleFill() {
+    if (holeFillTimer) return;
+    holeFillTimer = setTimeout(function () { holeFillTimer = 0; patchRecentHoles(); }, 500);
+  }
+  async function patchRecentHoles() {
+    if (!bars.length || !series || !chart) return;
+    const c = currentCoin();
+    const tf = state.tf;
+    const end = Date.now();
+    const start = end - Math.max((TF_MS[tf] || 60e3) * 240, 30 * 60e3);
+    let recent = [];
+    try {
+      if (useAsterChart(c)) recent = await fetchAsterKlines(c.aster.symbol, tf, end, 500);
+      else recent = await fetchHlKlines(c.hl && c.hl.coin, tf, start, end);
+    } catch (e) { return; }
+    recent = normalizeBars(recent, tf);
+    if (!recent.length) return;
+    let logical = null;
+    try { logical = chart.timeScale().getVisibleLogicalRange(); } catch (e) { /* */ }
+    const map = new Map();
+    bars.forEach((b) => map.set(b.time, b));
+    recent.forEach((b) => {
+      const prev = map.get(b.time);
+      if (!prev) map.set(b.time, b);
+      else map.set(b.time, {
+        time: b.time,
+        open: prev.open,
+        high: Math.max(prev.high, b.high),
+        low: Math.min(prev.low, b.low),
+        close: b.close
+      });
+    });
+    const merged = Array.from(map.values()).sort((a, b) => a.time - b.time);
+    if (merged.length === bars.length) {
+      let same = true;
+      for (let i = 0; i < merged.length; i++) {
+        if (merged[i].time !== bars[i].time || merged[i].close !== bars[i].close) { same = false; break; }
+      }
+      if (same) return;
+    }
+    bars = merged;
+    series.setData(bars);
+    if (logical) {
+      try { chart.timeScale().setVisibleLogicalRange(logical); } catch (e) { /* */ }
+    }
   }
   async function loadChart() {
     const host = $('chart');
@@ -1079,6 +1149,7 @@
     const c = currentCoin();
     histGen += 1;
     const gen = histGen;
+    pendingTick = null;
     histLoading = false;
     histEOF = false;
     if (!window.LightweightCharts) {
@@ -1111,7 +1182,16 @@
       if (gen !== histGen) return;
       bars = normalizeBars(bars, state.tf);
       series.setData(bars);
+      sizeChart();
       showRecentBars();
+      /* Re-apply once layout/width is final so the first paint is not one candle
+         with a stuck price scale. Never call this again after the user zooms. */
+      requestAnimationFrame(function () {
+        if (gen !== histGen) return;
+        sizeChart();
+        showRecentBars();
+        try { if (chart) chart.priceScale('right').applyOptions({ autoScale: true }); } catch (e) { /* */ }
+      });
       if (bars.length && bars[bars.length - 1].close > 0) {
         const close = bars[bars.length - 1].close;
         state.livePrice = close;
@@ -1146,7 +1226,9 @@
   }
   async function maybeLoadOlder(range) {
     if (!range || histLoading || histEOF || !bars.length || !chart || !series) return;
-    if (!(range.from < 12)) return;
+    const span = (range.to - range.from) || 0;
+    /* Zoom-out and pan-left should both fetch older pages before the left edge is hit. */
+    if (!(range.from < 40 || (span > 0 && range.from < span * 0.15))) return;
     histLoading = true;
     const gen = histGen;
     const oldest = bars[0].time;
@@ -1161,15 +1243,23 @@
     if (gen !== histGen) { histLoading = false; return; }
     more = normalizeBars(more, tf).filter((b) => b.time < oldest);
     if (!more.length) { histEOF = true; histLoading = false; return; }
-    let vr = null;
-    try { vr = chart.timeScale().getVisibleRange(); } catch (e) { /* */ }
+    let logical = null;
+    try { logical = chart.timeScale().getVisibleLogicalRange(); } catch (e) { /* */ }
+    const added = more.length;
     bars = normalizeBars(more.concat(bars), tf);
     series.setData(bars);
-    if (vr) {
-      try { chart.timeScale().setVisibleRange(vr); } catch (e) { /* */ }
+    if (logical) {
+      try {
+        chart.timeScale().setVisibleLogicalRange({ from: logical.from + added, to: logical.to + added });
+      } catch (e) { /* */ }
     }
     histLoading = false;
     renderOverlay(); renderDrawings();
+    /* If the user is still zoomed out against the new left edge, keep fetching. */
+    try {
+      const next = chart.timeScale().getVisibleLogicalRange();
+      if (next) setTimeout(function () { maybeLoadOlder(next); }, 0);
+    } catch (e) { /* */ }
   }
 
   function yAt(price) {
@@ -2106,6 +2196,7 @@
     const ch = msg.channel || msg.type;
     const d = msg.data;
     if (!d) return;
+    if (coin && !sameHlCoin(coin) && ch !== 'allMids') return;
     if (ch === 'candle') {
       const bar = parseBar(d, state.tf);
       if (bar) {
@@ -2186,6 +2277,7 @@
     }
     const type = d.e;
     if (isHl()) return;
+    if (d.s && !sameAsterSym(d.s)) return;
     if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade' && type !== 'depthUpdate')) {
       const px = parseFloat(d.p || d.markPrice);
       const extra = {};
@@ -2202,6 +2294,7 @@
       if (px > 0 && sz > 0) pushTape(px, sz, d.m ? 'sell' : 'buy', d.T);
     }
     if (type === 'kline' && d.k) {
+      if (d.k.s && !sameAsterSym(d.k.s)) return;
       const k = d.k;
       const bar = normalizeBars([{ time: toUnixSec(k.t), open: +k.o, high: +k.h, low: +k.l, close: +k.c }], state.tf)[0];
       if (bar) {
@@ -2219,6 +2312,7 @@
     bar = normalizeBars([bar], state.tf)[0];
     if (!bar) return;
     const last = bars[bars.length - 1];
+    if (last && !pxPlausible(bar.close, last.close) && !pxPlausible(bar.high, last.close) && !pxPlausible(bar.low, last.close)) return;
     if (!last) {
       bars = [bar];
       series.setData(bars);
@@ -2234,6 +2328,7 @@
       };
       series.update(bars[bars.length - 1]);
     } else if (bar.time > last.time) {
+      fillBarGap(bar.time);
       bars.push(bar);
       series.update(bar);
     }
@@ -2244,9 +2339,22 @@
     if (src === 'hl') return isHl();
     return true;
   }
+  function sameAsterSym(s) {
+    const cur = currentCoin();
+    return !!(s && cur.aster && String(s).toUpperCase() === String(cur.aster.symbol).toUpperCase());
+  }
+  function sameHlCoin(coin) {
+    const cur = currentCoin();
+    return !!(coin && cur.hl && coin === cur.hl.coin);
+  }
+  function pxPlausible(px, ref) {
+    if (!(px > 0)) return false;
+    if (!(ref > 0)) return true;
+    return px < ref * 8 && px > ref / 8;
+  }
   function applyTradeTick(px, src) {
     if (!(px > 0) || !venueOk(src)) return;
-    pendingTick = { px: px, src: src, t: Date.now() };
+    pendingTick = { px: px, src: src, t: Date.now(), coin: state.coin, gen: histGen };
     if (!liveRaf) liveRaf = requestAnimationFrame(flushTick);
   }
   function applyPriceTick(px, extra) {
@@ -2263,6 +2371,10 @@
     if (!t) return;
     pendingTick = null;
     if (!venueOk(t.src)) return;
+    if (t.coin && t.coin !== state.coin) return;
+    if (t.gen != null && t.gen !== histGen) return;
+    const last0 = bars[bars.length - 1];
+    if (last0 && !pxPlausible(t.px, last0.close)) return;
     lastTickAt = t.t;
     state.livePrice = t.px;
     state.priceStatus = 'live';
@@ -2281,11 +2393,13 @@
         bars[bars.length - 1] = bar;
         series.update(bar);
       } else if (last && buck > last.time) {
+        fillBarGap(buck);
+        const last2 = bars[bars.length - 1];
         const bar = {
           time: buck,
-          open: last.close,
-          high: Math.max(last.close, t.px),
-          low: Math.min(last.close, t.px),
+          open: last2.close,
+          high: Math.max(last2.close, t.px),
+          low: Math.min(last2.close, t.px),
           close: t.px
         };
         bars.push(bar);
