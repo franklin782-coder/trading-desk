@@ -392,6 +392,46 @@
       padding: 0;
     }
 
+    #marginCard.over .money input,
+    #marginCard.flash-max .money input { color: var(--red); }
+    #marginCard.over,
+    #marginCard.flash-max { border-color: var(--red); }
+    #marginCard.flash-max { animation: flashMax .85s ease; }
+    @keyframes flashMax {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(246, 70, 93, 0); }
+      35% { box-shadow: 0 0 0 2px rgba(246, 70, 93, .75); }
+    }
+    .max-note {
+      display: none;
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--red-text);
+    }
+    .max-note.show { display: block; }
+    .max-line {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-weight: 500;
+    }
+    .max-line.warn { color: var(--red-text); font-weight: 700; }
+    .max-line .mm { color: inherit; }
+    .max-line .use-max {
+      margin-left: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 2px 8px;
+      height: 24px;
+      vertical-align: middle;
+    }
+    .max-line .use-max:hover { background: #333; }
+
     .cta {
       width: 100%;
       height: 52px;
@@ -613,7 +653,7 @@
       <button type="button" id="btnShort">Short</button>
     </div>
 
-    <section class="card">
+    <section class="card" id="marginCard">
       <div class="split">
         <div>
           <div class="lbl">Margin</div>
@@ -624,6 +664,7 @@
           <div class="val" id="position">—</div>
         </div>
       </div>
+      <div class="max-note" id="marginMaxNote"></div>
     </section>
 
     <section class="card entry">
@@ -645,6 +686,7 @@
         <div class="lev-bubble" id="levBubble">19x</div>
       </div>
       <div class="chips" id="levChips"></div>
+      <div class="max-line" id="maxLine"></div>
     </section>
 
     <div class="liq-card" id="liqTopCard">
@@ -810,6 +852,43 @@
     ];
     const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
 
+    const ASTER_BRACKET_URL = 'https://www.asterdex.com/bapi/futures/v1/friendly/future/common/brackets';
+    const ASTER_BRACKETS_FALLBACK = {
+      BTC: [{min:151,max:200,cap:400},{min:101,max:150,cap:300000},{min:76,max:100,cap:800000},{min:51,max:75,cap:3000000},{min:26,max:50,cap:12000000},{min:21,max:25,cap:70000000},{min:11,max:20,cap:100000000},{min:6,max:10,cap:230000000},{min:5,max:5,cap:480000000},{min:4,max:4,cap:600000000},{min:3,max:3,cap:800000000},{min:2,max:2,cap:1200000000},{min:1,max:1,cap:1800000000}],
+      HYPE: [{min:151,max:300,cap:1000},{min:101,max:150,cap:2000},{min:76,max:100,cap:3000},{min:51,max:75,cap:200000},{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:20000000},{min:5,max:5,cap:30000000},{min:4,max:4,cap:40000000},{min:3,max:3,cap:50000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+      MRNA: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      ANT: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      VVV: [{min:6,max:10,cap:500000},{min:5,max:5,cap:1000000},{min:4,max:4,cap:2500000},{min:3,max:3,cap:5000000},{min:2,max:2,cap:10000000},{min:1,max:1,cap:1000000000}],
+      SOXL: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+      MU: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      AMD: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+      AVGO: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      TSM: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      SKHYNIX: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+      SOL: [{min:76,max:100,cap:50000},{min:51,max:75,cap:400000},{min:26,max:50,cap:1000000},{min:21,max:25,cap:4000000},{min:16,max:20,cap:8000000},{min:11,max:15,cap:20000000},{min:9,max:10,cap:40000000},{min:7,max:8,cap:50000000},{min:6,max:6,cap:60000000},{min:5,max:5,cap:80000000},{min:4,max:4,cap:100000000},{min:3,max:3,cap:150000000},{min:2,max:2,cap:200000000},{min:1,max:1,cap:400000000}],
+      NVDA: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+    };
+    const HL_TIERS_FALLBACK = {
+      BTC: [{lower:0,maxLev:40},{lower:150000000,maxLev:20}],
+      HYPE: [{lower:0,maxLev:10},{lower:20000000,maxLev:5}],
+      SOL: [{lower:0,maxLev:20},{lower:70000000,maxLev:10}],
+      VVV: [{lower:0,maxLev:3}],
+      MRNA: [{lower:0,maxLev:10}],
+      ANT: [{lower:0,maxLev:10}],
+      SOXL: [{lower:0,maxLev:10}],
+      MU: [{lower:0,maxLev:10}],
+      AMD: [{lower:0,maxLev:10}],
+      AVGO: [{lower:0,maxLev:10}],
+      TSM: [{lower:0,maxLev:10}],
+      SKHYNIX: [{lower:0,maxLev:10}],
+      NVDA: [{lower:0,maxLev:10}],
+    };
+    let asterBrackets = JSON.parse(JSON.stringify(ASTER_BRACKETS_FALLBACK));
+    let hlTiers = JSON.parse(JSON.stringify(HL_TIERS_FALLBACK));
+    let asterBracketsLive = false;
+    let marginFlashTimer = 0;
+    let marginFlashText = '';
+
     const $ = (id) => document.getElementById(id);
     const els = {
       coinName: $('coinName'), coinIcon: $('coinIcon'), coinLogo: $('coinLogo'), maxLevBadge: $('maxLevBadge'),
@@ -818,9 +897,9 @@
       btnAster: $('btnAster'), btnHl: $('btnHl'),
       pasteTitle: $('pasteTitle'), pasteHint: $('pasteHint'),
       btnLong: $('btnLong'), btnShort: $('btnShort'),
-      margin: $('margin'), position: $('position'), entry: $('entry'),
+      margin: $('margin'), marginCard: $('marginCard'), marginMaxNote: $('marginMaxNote'), position: $('position'), entry: $('entry'),
       levNum: $('levNum'), levRange: $('levRange'), levBubble: $('levBubble'), levFill: $('levFill'),
-      levChips: $('levChips'), liq: $('liq'), liqPct: $('liqPct'),
+      levChips: $('levChips'), maxLine: $('maxLine'), liq: $('liq'), liqPct: $('liqPct'),
       outLiq: $('outLiq'), outLiqPct: $('outLiqPct'), liqAlert: $('liqAlert'),
       feeEst: $('feeEst'), feePct: $('feePct'), cta: $('cta'),
       tpPrice: $('tpPrice'), tpPct: $('tpPct'), tpUsd: $('tpUsd'),
@@ -893,6 +972,88 @@
     function levMax() {
       const s = coinSpec();
       return (s && s.max) || 1;
+    }
+
+    function fmtCap(x) {
+      if (!isFinite(x)) return '—';
+      if (Math.abs(x) >= 1000) {
+        return '$' + Math.round(x).toLocaleString('en-US');
+      }
+      return fmtUsd(x);
+    }
+
+    function maxMarginOf(cap, lev) {
+      if (!(cap > 0) || !(lev > 0)) return NaN;
+      return Math.floor((cap / lev) * 100) / 100;
+    }
+
+    function sizeLimit() {
+      const lev = state.lev;
+      if (!(lev >= 1)) return { available: false };
+      if (isHl()) {
+        const tiers = hlTiers[currentCoin().id];
+        if (!Array.isArray(tiers) || !tiers.length) return { available: false };
+        const next = tiers.find((t) => t.maxLev < lev);
+        if (!next) return { available: true, uncapped: true };
+        const cap = Number(next.lower);
+        if (!(cap > 0)) return { available: true, uncapped: true };
+        return { available: true, uncapped: false, cap: cap, maxMargin: maxMarginOf(cap, lev) };
+      }
+      const rows = asterBrackets[currentCoin().id];
+      if (!Array.isArray(rows) || !rows.length) return { available: false };
+      const br = rows.find((r) => lev >= r.min && lev <= r.max);
+      if (!br || !(br.cap > 0)) return { available: false };
+      return { available: true, uncapped: false, cap: br.cap, maxMargin: maxMarginOf(br.cap, lev) };
+    }
+
+    function clearMarginFlash() {
+      marginFlashText = '';
+      clearTimeout(marginFlashTimer);
+      if (els.marginCard) els.marginCard.classList.remove('over', 'flash-max');
+      if (els.marginMaxNote) {
+        els.marginMaxNote.classList.remove('show');
+        els.marginMaxNote.textContent = '';
+      }
+    }
+
+    function fmtMaxMargin(x) {
+      if (!isFinite(x)) return '—';
+      if (Math.abs(x - Math.round(x)) < 0.001 && Math.abs(x) >= 1) return fmtCap(x);
+      return fmtUsd(x);
+    }
+
+    function flashMarginMax(text) {
+      marginFlashText = text;
+      if (els.marginCard) {
+        els.marginCard.classList.add('over', 'flash-max');
+      }
+      if (els.marginMaxNote) {
+        els.marginMaxNote.textContent = text;
+        els.marginMaxNote.classList.add('show');
+      }
+      clearTimeout(marginFlashTimer);
+      marginFlashTimer = setTimeout(() => {
+        marginFlashText = '';
+        if (els.marginCard) els.marginCard.classList.remove('over', 'flash-max');
+        if (els.marginMaxNote) {
+          els.marginMaxNote.classList.remove('show');
+          els.marginMaxNote.textContent = '';
+        }
+      }, 1400);
+    }
+
+    function clampMarginToLimit({ flash } = {}) {
+      const lim = sizeLimit();
+      if (!lim.available || lim.uncapped || !(lim.maxMargin > 0)) return false;
+      if (!(state.margin > lim.maxMargin)) return false;
+      state.margin = lim.maxMargin;
+      if (els.margin && !focused.has(els.margin)) {
+        /* value is set in render */
+      } else if (els.margin) {
+        els.margin.value = trimFixed(state.margin, 2);
+      }
+      if (flash) flashMarginMax('Max ' + fmtMaxMargin(lim.maxMargin) + ' at ' + state.lev + 'x');
+      return true;
     }
 
     function clampLev(v) {
@@ -1222,6 +1383,37 @@
         ? (Number.isInteger(position()) ? '$' + position().toLocaleString('en-US') : fmtUsd(position()))
         : '—';
 
+      const lim = sizeLimit();
+      const over = !!(lim.available && !lim.uncapped && validBase() && position() > lim.cap + 1e-8);
+      if (els.marginCard) {
+        els.marginCard.classList.toggle('over', over || !!marginFlashText);
+      }
+      if (els.marginMaxNote) {
+        if (marginFlashText) {
+          els.marginMaxNote.textContent = marginFlashText;
+          els.marginMaxNote.classList.add('show');
+        } else if (over) {
+          els.marginMaxNote.textContent = 'Max ' + fmtMaxMargin(lim.maxMargin) + ' at ' + state.lev + 'x';
+          els.marginMaxNote.classList.add('show');
+        } else {
+          els.marginMaxNote.textContent = '';
+          els.marginMaxNote.classList.remove('show');
+        }
+      }
+      if (els.maxLine) {
+        els.maxLine.className = 'max-line' + (over ? ' warn' : '');
+        if (!lim.available) {
+          els.maxLine.textContent = 'Max position at this leverage is unavailable';
+        } else if (lim.uncapped) {
+          els.maxLine.textContent = 'No notional cap at ' + state.lev + 'x';
+        } else {
+          const nearMax = validBase() && state.margin >= lim.maxMargin - 1e-8;
+          els.maxLine.innerHTML = 'Max position at ' + state.lev + 'x: ' + fmtCap(lim.cap) +
+            ' <span class="mm">(max margin ' + fmtMaxMargin(lim.maxMargin) + ')</span>' +
+            (nearMax ? '' : ' <button type="button" class="use-max" id="useMax">Use max</button>');
+        }
+      }
+
       const liq = liqPrice();
       const liqPctVal = liqMovePct(liq);
       els.liq.textContent = isFinite(liq) ? ('~' + fmtPrice(liq, true)) : 'n/a';
@@ -1390,6 +1582,7 @@
     bindInput(els.margin, (v) => {
       const n = parseNum(v);
       if (n > 0) state.margin = n;
+      clampMarginToLimit({ flash: true });
       save();
     }, { live: true });
 
@@ -1412,6 +1605,7 @@
       const n = Math.round(parseNum(v));
       if (!isFinite(n)) return;
       state.lev = clampLev(n);
+      clampMarginToLimit({ flash: true });
       save();
     }
 
@@ -1473,8 +1667,71 @@
         const row = map[c.hl.coin];
         if (row && row.max > 0) c.hl.max = row.max;
       });
+      applyHlTiers(main, null);
+      applyHlTiers(xyz, 'xyz');
       hlCache = { at: Date.now(), map: map };
       return map;
+    }
+
+    function applyHlTiers(pair, dex) {
+      const meta = pair && pair[0];
+      if (!meta) return;
+      const tables = {};
+      (meta.marginTables || []).forEach((item) => {
+        if (Array.isArray(item)) tables[item[0]] = item[1];
+      });
+      const byName = {};
+      (meta.universe || []).forEach((u) => { byName[u.name] = u; });
+      COINS.forEach((c) => {
+        if (!c.hl) return;
+        const wantDex = c.hl.dex || null;
+        if ((wantDex || null) !== (dex || null)) return;
+        const raw = c.hl.coin;
+        const short = raw.replace(/^xyz:/, '');
+        const u = byName[raw] || byName[short] || byName['xyz:' + short];
+        if (!u) return;
+        const tid = u.marginTableId;
+        const tbl = tables[tid];
+        let tiers = null;
+        if (tbl && Array.isArray(tbl.marginTiers) && tbl.marginTiers.length) {
+          tiers = tbl.marginTiers.map((row) => ({
+            lower: parseFloat(row.lowerBound),
+            maxLev: row.maxLeverage,
+          }));
+        } else if (tid != null && tid < 50) {
+          tiers = [{ lower: 0, maxLev: u.maxLeverage || tid }];
+        }
+        if (tiers && tiers.length) hlTiers[c.id] = tiers;
+      });
+    }
+
+    async function refreshAsterBrackets() {
+      try {
+        const r = await fetch(ASTER_BRACKET_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: '{}',
+          cache: 'no-store',
+        });
+        if (!r.ok) return;
+        const j = await r.json();
+        const list = j && j.data && j.data.brackets;
+        if (!Array.isArray(list)) return;
+        const by = {};
+        list.forEach((item) => { by[item.symbol] = item.riskBrackets || []; });
+        COINS.forEach((c) => {
+          const rows = c.aster && by[c.aster.symbol];
+          if (!rows || !rows.length) return;
+          asterBrackets[c.id] = rows.map((row) => ({
+            min: row.minOpenPosLeverage,
+            max: row.maxOpenPosLeverage,
+            cap: Number(row.bracketNotionalCap),
+          }));
+        });
+        asterBracketsLive = true;
+        clampMarginToLimit({ flash: false });
+        render();
+      } catch (e) { /* keep hardcoded snapshot */ }
     }
 
     async function fetchLive() {
@@ -1523,6 +1780,8 @@
       }
       state.coin = coin.id;
       state.lev = clampLev(state.lev);
+      clearMarginFlash();
+      clampMarginToLimit({ flash: true });
       save();
       render();
       refreshPrice({ fillEntry: true });
@@ -1539,6 +1798,8 @@
       }
       state.lev = clampLev(state.lev);
       state.livePrice = null;
+      clearMarginFlash();
+      clampMarginToLimit({ flash: true });
       save();
       render();
       refreshPrice({ fillEntry: true });
@@ -1609,10 +1870,24 @@
     els.refreshPrice.addEventListener('click', () => refreshPrice({ fillEntry: true }));
     window.addEventListener('resize', positionBubble);
 
+    if (els.maxLine) {
+      els.maxLine.addEventListener('click', (e) => {
+        const btn = e.target.closest && e.target.closest('#useMax, .use-max');
+        if (!btn) return;
+        const lim = sizeLimit();
+        if (!lim.available || lim.uncapped || !(lim.maxMargin > 0)) return;
+        clearMarginFlash();
+        state.margin = lim.maxMargin;
+        save();
+        render();
+      });
+    }
+
     load();
     buildCoinBar();
     render();
     refreshPrice({ fillEntry: false, quiet: true });
+    refreshAsterBrackets();
   })();
   </script>
 </body>
