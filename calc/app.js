@@ -410,8 +410,15 @@
     return (posPnl(p) / p.margin) * 100;
   }
 
+  let syncApplying = false;
+  function notifySync() {
+    if (syncApplying) return;
+    const api = window.TradingDeskSync;
+    if (api && typeof api.notifyLocalChange === 'function') api.notifyLocalChange();
+  }
   function savePaper() {
     try { localStorage.setItem(PAPER_KEY, JSON.stringify(book)); } catch (e) { /* */ }
+    notifySync();
   }
   function saveCalc() {
     try {
@@ -465,6 +472,7 @@
         book.pending = Array.isArray(b.pending) ? b.pending : [];
         book.history = Array.isArray(b.history) ? b.history : [];
         book.seq = +b.seq || book.positions.length + 1;
+        book.resetAt = +b.resetAt || 0;
         if (Math.abs(book.balance - OLD_START_BAL) < 0.005) {
           book.balance = START_BAL;
           try { localStorage.setItem(PAPER_KEY, JSON.stringify(book)); } catch (err) { /* */ }
@@ -476,7 +484,7 @@
 
   function nextId(prefix) {
     book.seq = (book.seq || 1) + 1;
-    return prefix + book.seq;
+    return prefix + book.seq + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
   function hlTickerRow(map, coin) {
@@ -873,6 +881,13 @@
   }
 
   function fillPosition(rec, fill, reason) {
+    if (!rec || !rec.id) return;
+    if ((book.positions || []).some((p) => p.id === rec.id)) return;
+    if ((book.history || []).some((h) => h.id === rec.id)) {
+      book.pending = (book.pending || []).filter((p) => p.id !== rec.id);
+      savePaper();
+      return;
+    }
     rec.entry = fill;
     rec.liq = liqPriceOf(rec.side, rec.entry, rec.lev, rec.maxLev, rec.platform);
     rec.openFee = Math.abs(rec.entry * rec.qty) * (rec.feeRate || 0);
@@ -892,6 +907,13 @@
   function closePosition(id, reason) {
     const i = book.positions.findIndex((p) => p.id === id);
     if (i < 0) return;
+    if ((book.history || []).some((h) => h.id === id)) {
+      book.positions.splice(i, 1);
+      savePaper();
+      renderAll();
+      renderOverlay();
+      return;
+    }
     const p = book.positions[i];
     const exit = markOf(p.coin);
     if (!(exit > 0)) { toast('No price to close.'); return; }
@@ -939,7 +961,7 @@
 
   function resetAccount() {
     if (!confirm('Reset the paper account to $30,000? Positions and orders will be cleared.')) return;
-    book = { balance: START_BAL, positions: [], pending: [], history: [], seq: 1 };
+    book = { balance: START_BAL, positions: [], pending: [], history: [], seq: 1, resetAt: Date.now() };
     savePaper();
     toast('Account reset to $30,000');
     renderAll();
@@ -2652,6 +2674,7 @@
   }
   function saveDrawings() {
     try { localStorage.setItem(DRAW_KEY, JSON.stringify(drawings)); } catch (e) { /* */ }
+    notifySync();
   }
   function coinDraws() {
     const id = state.coin;
@@ -3214,8 +3237,59 @@
   }
 
 
+
+  function getSyncState() {
+    return {
+      book: {
+        balance: book.balance,
+        positions: book.positions,
+        pending: book.pending,
+        history: book.history,
+        seq: book.seq,
+        resetAt: book.resetAt || 0
+      },
+      drawings: drawings
+    };
+  }
+  function applySyncState(data) {
+    if (!data || !data.book) return;
+    syncApplying = true;
+    try {
+      book.balance = +data.book.balance;
+      book.positions = Array.isArray(data.book.positions) ? data.book.positions.slice() : [];
+      book.pending = Array.isArray(data.book.pending) ? data.book.pending.slice() : [];
+      book.history = Array.isArray(data.book.history) ? data.book.history.slice() : [];
+      book.seq = Math.max(+data.book.seq || 1, book.seq || 1);
+      book.resetAt = +data.book.resetAt || book.resetAt || 0;
+      if (data.drawings && typeof data.drawings === 'object') {
+        drawings = data.drawings;
+        try { localStorage.setItem(DRAW_KEY, JSON.stringify(drawings)); } catch (e) { /* */ }
+      }
+      try { localStorage.setItem(PAPER_KEY, JSON.stringify(book)); } catch (e) { /* */ }
+    } finally {
+      syncApplying = false;
+    }
+    renderAll();
+    renderOverlay();
+    try { renderDrawings(); } catch (e) { /* */ }
+  }
+  function hookCloudSync() {
+    function attach() {
+      const api = window.TradingDeskSync;
+      if (!api || typeof api.connect !== 'function') return false;
+      api.connect({
+        getState: getSyncState,
+        applyState: applySyncState,
+        confirm: (msg) => window.confirm(msg)
+      });
+      return true;
+    }
+    if (!attach()) window.addEventListener('td-sync-ready', attach, { once: true });
+  }
+
   async function init() {
     loadSaved();
+    hookCloudSync();
     bind();
     syncDesktopLayout();
     renderTf();
