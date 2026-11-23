@@ -12,7 +12,11 @@
   const SL_CHIPS = [-10, -25, -50, -75];
   const TFS = ['1m', '5m', '15m', '1h', '4h', '1d'];
   const TF_LABEL = { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1D' };
-  const TF_LOOKBACK_MS = { '1m': 12 * 3600e3, '5m': 2 * 86400e3, '15m': 5 * 86400e3, '1h': 14 * 86400e3, '4h': 60 * 86400e3, '1d': 200 * 86400e3 };
+  const TF_MS = { '1m': 60e3, '5m': 5 * 60e3, '15m': 15 * 60e3, '1h': 3600e3, '4h': 4 * 3600e3, '1d': 86400e3 };
+  /* Initial window per TF. 1m is at least 7 days (multiple API pages; HL caps a snapshot at 5000 candles). */
+  const TF_INIT_MS = { '1m': 7 * 86400e3, '5m': 14 * 86400e3, '15m': 30 * 86400e3, '1h': 90 * 86400e3, '4h': 365 * 86400e3, '1d': 2000 * 86400e3 };
+  const HL_CANDLE_CAP = 5000;
+  const ASTER_KLINE_LIMIT = 1500;
   const ASTER_API = 'https://fapi.asterdex.com/fapi/v1';
   const ASTER_BRACKET_URL = 'https://www.asterdex.com/bapi/futures/v1/friendly/future/common/brackets';
   const HL_INFO = 'https://api.hyperliquid.xyz/info';
@@ -103,7 +107,9 @@
   let chart = null, series = null, ws = null, wsCoin = '', wsTf = '', bars = [];
   let wsKind = '', wsKey = '', lastTickAt = 0, liveRaf = 0, pendingTick = null, wsRetry = 0;
   let drawTool = 'cursor', drawColor = '#3b8aff', drawings = {}, selectedDraw = null;
-  let measure = null, crosshair = null, longPressTimer = 0, chartPanOff = false;
+  let measure = null, crosshair = null, longPressTimer = 0, chartPanOff = false, pendingTrend = null;
+  let histLoading = false, histEOF = false, histGen = 0;
+  let obRaw = { bids: [], asks: [] }, tape = [], obGroup = 0, obTab = 'book', obRaf = 0, obSteps = [];
   const DRAW_KEY = 'td-calc-draw-v1';
   const DRAW_COLORS = ['#3b8aff', '#86e8a8', '#f6465d', '#fbbf24', '#ffffff', '#c084fc'];
   const focused = new Set();
@@ -166,13 +172,32 @@
     const n = Math.round(+v || 1);
     return Math.max(1, Math.min(levMax(), n));
   }
-  function markOf(id) {
+  function metaOf(id) {
     const c = COIN_BY_ID[id] || currentCoin();
+    return liveMeta[c.id] || {};
+  }
+  function displayPx(id) {
+    const c = COIN_BY_ID[id] || currentCoin();
+    const meta = metaOf(c.id);
     if (c.id === state.coin && state.livePrice > 0) return state.livePrice;
-    const meta = liveMeta[c.id];
-    if (meta && meta.px > 0) return meta.px;
-    const s = coinSpec(c);
-    return (s && s.fallback) || 0;
+    if (meta.trade > 0) return meta.trade;
+    if (meta.mid > 0) return meta.mid;
+    if (meta.px > 0) return meta.px;
+    if (meta.mark > 0) return meta.mark;
+    const spec = coinSpec(c);
+    return (spec && spec.fallback) || 0;
+  }
+  function markOf(id) {
+    const meta = metaOf(id);
+    if (meta.mark > 0) return meta.mark;
+    return displayPx(id);
+  }
+  function setMeta(id, extra) {
+    liveMeta[id] = Object.assign({}, liveMeta[id], extra);
+  }
+  function posNotional(p) {
+    const px = displayPx(p.coin) || markOf(p.coin);
+    return (p.qty || 0) * (px || 0);
   }
   function kindOf(c) { return CRYPTO[c.id] ? 'crypto' : 'stock'; }
 
@@ -479,13 +504,17 @@
     const out = {};
     uni.forEach((u, i) => {
       const ctx = ctxs && ctxs[i];
-      const px = parseFloat(ctx && (ctx.markPx || ctx.midPx || ctx.oraclePx));
+      const mark = parseFloat(ctx && ctx.markPx);
+      const mid = parseFloat(ctx && ctx.midPx);
+      const px = mid > 0 ? mid : (mark > 0 ? mark : parseFloat(ctx && ctx.oraclePx));
       const prev = parseFloat(ctx && ctx.prevDayPx);
       const fund = parseFloat(ctx && ctx.funding);
       const oi = parseFloat(ctx && ctx.openInterest);
       const vol = parseFloat(ctx && (ctx.dayNtlVlm || ctx.dayNtlVlM));
       const row = {
         px: px > 0 ? px : null,
+        mid: mid > 0 ? mid : null,
+        mark: mark > 0 ? mark : null,
         max: u.maxLeverage,
         prevDay: prev > 0 ? prev : null,
         funding: isFinite(fund) ? fund : null,
@@ -554,24 +583,29 @@
   }
 
   async function fetchAsterPrice(symbol) {
+    let mark = 0, fund = NaN, last = 0;
     try {
       const r = await fetch(ASTER_API + '/premiumIndex?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
       if (r.ok) {
         const j = await r.json();
-        const p = parseFloat(j.markPrice);
-        const fund = parseFloat(j.lastFundingRate);
-        if (p > 0) return { px: p, funding: isFinite(fund) ? fund : null };
+        mark = parseFloat(j.markPrice);
+        fund = parseFloat(j.lastFundingRate);
       }
     } catch (e) { /* try last price */ }
     try {
       const r = await fetch(ASTER_API + '/ticker/price?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
       if (r.ok) {
         const j = await r.json();
-        const p = parseFloat(j.price);
-        if (p > 0) return { px: p };
+        last = parseFloat(j.price);
       }
     } catch (e) { /* fallback */ }
-    return null;
+    if (!(mark > 0) && !(last > 0)) return null;
+    const out = {};
+    if (mark > 0) out.mark = mark;
+    if (isFinite(fund)) out.funding = fund;
+    if (last > 0) { out.trade = last; out.px = last; }
+    else out.px = mark;
+    return out;
   }
 
   async function refreshAsterDayChange() {
@@ -630,15 +664,20 @@
       try {
         const map = await fetchHlMap(true);
         const row = hlTickerRow(map, c);
-        if (row && row.px > 0) return row.px;
+        if (row) {
+          setMeta(c.id, row);
+          if (row.trade > 0) return row.trade;
+          return null;
+        }
       } catch (e) { /* */ }
       return null;
     }
     if (!c.aster || !c.aster.symbol) return null;
     const got = await fetchAsterPrice(c.aster.symbol);
-    if (got && got.px > 0) {
-      liveMeta[c.id] = Object.assign({}, liveMeta[c.id], got);
-      return got.px;
+    if (got) {
+      setMeta(c.id, got);
+      if (got.trade > 0) return got.trade;
+      return null;
     }
     return null;
   }
@@ -655,11 +694,15 @@
       state.livePrice = live;
       state.priceStatus = 'live';
       if (fillEntry) state.entry = live;
+    } else if (state.livePrice > 0) {
+      state.priceStatus = wsIsLive() || lastTickAt ? 'live' : state.priceStatus;
+      if (fillEntry) state.entry = state.livePrice;
     } else {
-      state.livePrice = fallback || state.livePrice || null;
-      state.priceStatus = 'fallback';
-      if (fillEntry && fallback > 0) state.entry = fallback;
-      if (!quiet) toast('No price from ' + platformName() + ', using last known');
+      const mid = (liveMeta[coin.id] && (liveMeta[coin.id].mid || liveMeta[coin.id].px || liveMeta[coin.id].mark)) || 0;
+      state.livePrice = mid || fallback || null;
+      state.priceStatus = mid ? 'live' : 'fallback';
+      if (fillEntry && state.livePrice > 0) state.entry = state.livePrice;
+      if (!quiet && !(state.livePrice > 0)) toast('No price from ' + platformName() + ', using last known');
     }
     if (!quiet) saveCalc();
     tickBook();
@@ -738,6 +781,8 @@
     state.coin = coin.id;
     state.livePrice = null;
     lastTickAt = 0;
+    clearCrosshair();
+    resetOrderBook();
     state.lev = clampLev(state.lev);
     clampMarginToLimit({ flash: false });
     saveCalc();
@@ -809,14 +854,16 @@
       t: Date.now()
     };
     if (state.typ === 'limit') {
-      const px = markOf(c.id);
+      const px = displayPx(c.id);
       const fillNow = rec.side === 'long' ? px <= rec.entry : px >= rec.entry;
       if (!fillNow) {
         book.pending.push(rec);
         savePaper();
         closeOrder();
+        clearCrosshair();
         toast('Limit resting at ' + fmtPrice(rec.entry, true));
         renderAll();
+        renderOverlay();
         return;
       }
     }
@@ -833,6 +880,7 @@
     book.pending = (book.pending || []).filter((p) => p.id !== rec.id);
     savePaper();
     closeOrder();
+    clearCrosshair();
     toast((rec.side === 'long' ? 'Long' : 'Short') + ' ' + rec.coin + ' filled at ' + fmtPrice(fill, true));
     setView('asset');
     renderAll();
@@ -864,7 +912,7 @@
   function tickBook() {
     const pending = (book.pending || []).slice();
     pending.forEach((o) => {
-      const px = markOf(o.coin);
+      const px = displayPx(o.coin);
       if (!(px > 0)) return;
       const hit = o.side === 'long' ? px <= o.entry : px >= o.entry;
       if (hit) fillPosition(o, o.entry, 'limit');
@@ -905,7 +953,10 @@
         horzLines: { color: '#222222', style: 2, visible: true }
       },
       rightPriceScale: { borderColor: '#1a1a1a', scaleMargins: { top: 0.08, bottom: 0.12 } },
-      timeScale: { borderColor: '#1a1a1a', timeVisible: true, secondsVisible: state.tf === '1m' },
+      timeScale: {
+        borderColor: '#1a1a1a', timeVisible: true, secondsVisible: state.tf === '1m',
+        barSpacing: 8, minBarSpacing: 3, rightOffset: 6
+      },
       crosshair: { vertLine: { color: '#333', labelBackgroundColor: '#222' }, horzLine: { color: '#333', labelBackgroundColor: '#222' } },
       handleScroll: { pinch: true, mouseWheel: true },
       handleScale: { pinch: true, axisPressedMouseMove: true }
@@ -914,24 +965,88 @@
   function candleStyle() {
     return {
       upColor: UP, downColor: DN,
-      borderVisible: false,
+      borderVisible: true,
+      borderUpColor: UP, borderDownColor: DN,
       wickUpColor: UP, wickDownColor: DN
     };
   }
   function sizeChart() {
     if (chart && $('chart')) chart.applyOptions({ width: $('chart').clientWidth, height: $('chart').clientHeight });
   }
-  function parseBar(row) {
-    const t = Math.floor((row.t || row.T || 0) / 1000);
+  function tfSeconds(tf) {
+    return (TF_MS[tf || state.tf] || 60e3) / 1000;
+  }
+  function toUnixSec(t) {
+    t = Number(t);
+    if (!isFinite(t) || t <= 0) return 0;
+    if (t > 1e11) t = t / 1000;
+    return Math.floor(t);
+  }
+  function bucketTime(t, tf) {
+    const step = tfSeconds(tf);
+    t = toUnixSec(t);
+    if (!t || !step) return 0;
+    return Math.floor(t / step) * step;
+  }
+  function parseBar(row, tf) {
+    if (!row) return null;
+    const time = bucketTime(row.t || row.T || row.time, tf);
+    const open = +row.o, high = +row.h, low = +row.l, close = +row.c;
+    if (!time || !(close > 0) || !(open > 0)) return null;
     return {
-      time: t,
-      open: +row.o, high: +row.h, low: +row.l, close: +row.c
+      time: time,
+      open: open,
+      high: high > 0 ? Math.max(high, open, close) : Math.max(open, close),
+      low: low > 0 ? Math.min(low, open, close) : Math.min(open, close),
+      close: close
     };
+  }
+  function normalizeBars(list, tf) {
+    const map = new Map();
+    (list || []).forEach((raw) => {
+      let b = null;
+      if (raw && raw.time && raw.close != null && raw.open != null && raw.o == null) {
+        const time = bucketTime(raw.time, tf) || toUnixSec(raw.time);
+        if (!time || !(+raw.close > 0) || !(+raw.open > 0)) return;
+        b = {
+          time: time,
+          open: +raw.open,
+          high: Math.max(+raw.high || 0, +raw.open, +raw.close),
+          low: Math.min(+raw.low || +raw.open, +raw.open, +raw.close),
+          close: +raw.close
+        };
+      } else {
+        b = parseBar(raw, tf);
+      }
+      if (!b || !b.time || !(b.close > 0)) return;
+      const prev = map.get(b.time);
+      if (!prev) map.set(b.time, b);
+      else {
+        map.set(b.time, {
+          time: b.time,
+          open: prev.open,
+          high: Math.max(prev.high, b.high),
+          low: Math.min(prev.low, b.low),
+          close: b.close
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.time - b.time);
+  }
+  function showRecentBars() {
+    if (!chart || !bars.length) return;
+    const vis = state.tf === '1m' ? 180 : state.tf === '5m' ? 160 : state.tf === '15m' ? 140 : 120;
+    const from = Math.max(0, bars.length - vis);
+    try { chart.timeScale().setVisibleLogicalRange({ from: from, to: bars.length + 4 }); } catch (e) { /* */ }
   }
   async function loadChart() {
     const host = $('chart');
     if (!host) return;
     const c = currentCoin();
+    histGen += 1;
+    const gen = histGen;
+    histLoading = false;
+    histEOF = false;
     if (!window.LightweightCharts) {
       host.innerHTML = '<div style="padding:20px;color:#8a8a8a">Chart library failed to load.</div>';
       return;
@@ -943,20 +1058,82 @@
     host.innerHTML = '';
     chart = LightweightCharts.createChart(host, Object.assign({ width: host.clientWidth, height: host.clientHeight }, chartOptions()));
     series = chart.addCandlestickSeries(candleStyle());
-    chart.timeScale().subscribeVisibleLogicalRangeChange(function () { renderOverlay(); renderDrawings(); });
+    chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
+      renderOverlay(); renderDrawings();
+      maybeLoadOlder(range);
+    });
     bars = [];
+    const end = Date.now();
+    const want = end - (TF_INIT_MS[state.tf] || 7 * 86400e3);
     try {
-      if (useAsterChart(c)) bars = await fetchAsterKlines(c.aster.symbol, state.tf);
-      else bars = await fetchHlKlines(c.hl && c.hl.coin, state.tf);
+      if (useAsterChart(c)) bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
+        return fetchAsterKlines(c.aster.symbol, state.tf, endMs, ASTER_KLINE_LIMIT);
+      });
+      else bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
+        return fetchHlKlines(c.hl && c.hl.coin, state.tf, startMs, endMs);
+      });
+      if (gen !== histGen) return;
+      bars = normalizeBars(bars, state.tf);
       series.setData(bars);
-      chart.timeScale().fitContent();
+      showRecentBars();
+      if (bars.length && bars[bars.length - 1].close > 0) {
+        const close = bars[bars.length - 1].close;
+        state.livePrice = close;
+        setMeta(c.id, { trade: close, px: close });
+      }
     } catch (e) {
+      if (gen !== histGen) return;
       bars = [];
+      try { series.setData([]); } catch (err) { /* */ }
+      host.insertAdjacentHTML('beforeend', '<div class="chart-empty">No candles from ' + (useAsterChart(c) ? 'Aster' : 'Hyperliquid') + '</div>');
     }
     subscribeLive();
     renderOverlay();
     renderDrawings();
     renderLiveSrc();
+    renderAssetHead();
+  }
+  async function fetchCandlePages(tf, wantStartMs, endMs, fetchPage) {
+    let end = endMs || Date.now();
+    const want = wantStartMs || (end - (TF_INIT_MS[tf] || 7 * 86400e3));
+    let all = [];
+    for (let i = 0; i < 8 && end > want; i++) {
+      const chunk = await fetchPage(want, end);
+      if (!chunk || !chunk.length) break;
+      all = chunk.concat(all);
+      const oldest = chunk[0].time * 1000;
+      if (oldest <= want + tfSeconds(tf) * 1000) break;
+      if (chunk.length < 5) break;
+      end = oldest - 1;
+    }
+    return normalizeBars(all, tf);
+  }
+  async function maybeLoadOlder(range) {
+    if (!range || histLoading || histEOF || !bars.length || !chart || !series) return;
+    if (!(range.from < 12)) return;
+    histLoading = true;
+    const gen = histGen;
+    const oldest = bars[0].time;
+    const endMs = oldest * 1000 - 1;
+    const tf = state.tf;
+    const c = currentCoin();
+    let more = [];
+    try {
+      if (useAsterChart(c)) more = await fetchAsterKlines(c.aster.symbol, tf, endMs, ASTER_KLINE_LIMIT);
+      else more = await fetchHlKlines(c.hl && c.hl.coin, tf, endMs - (TF_MS[tf] || 60e3) * HL_CANDLE_CAP, endMs);
+    } catch (e) { more = []; }
+    if (gen !== histGen) { histLoading = false; return; }
+    more = normalizeBars(more, tf).filter((b) => b.time < oldest);
+    if (!more.length) { histEOF = true; histLoading = false; return; }
+    let vr = null;
+    try { vr = chart.timeScale().getVisibleRange(); } catch (e) { /* */ }
+    bars = normalizeBars(more.concat(bars), tf);
+    series.setData(bars);
+    if (vr) {
+      try { chart.timeScale().setVisibleRange(vr); } catch (e) { /* */ }
+    }
+    histLoading = false;
+    renderOverlay(); renderDrawings();
   }
 
   function yAt(price) {
@@ -977,7 +1154,8 @@
         const y = yAt(p.entry);
         html += '<div class="tv-row" style="top:' + y + 'px;--lc:' + lc + '">' +
           '<div class="tv-hline solid"></div>' +
-          '<div class="tv-pnl' + (u < 0 ? ' neg' : '') + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) + '</div>' +
+          '<div class="tv-pnl' + (u < 0 ? ' neg' : '') + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) +
+          '<button type="button" class="tv-x" data-close="' + p.id + '" aria-label="Close position">×</button></div>' +
           '<div class="tv-lab">Entry ' + fmtPrice(p.entry) + '</div></div>';
       }
       if (lines.tp !== false && p.tp > 0 && yAt(p.tp) != null) {
@@ -990,7 +1168,28 @@
         html += '<div class="tv-row" style="top:' + yAt(p.liq) + 'px;--lc:' + ORANGE + '"><div class="tv-hline"></div><div class="tv-lab liq">Liq ' + fmtPrice(p.liq) + '</div></div>';
       }
     });
+    (book.pending || []).filter((o) => o.coin === state.coin).forEach((o) => {
+      if (!(o.entry > 0) || yAt(o.entry) == null) return;
+      const y = yAt(o.entry);
+      const side = o.side === 'short' ? 'Short' : 'Long';
+      const qty = trimFixed(o.qty, o.qty >= 1 ? 4 : 6);
+      html += '<div class="tv-row tv-limit-row" style="top:' + y + 'px;--lc:#fff">' +
+        '<div class="tv-hline tv-limit-line"></div>' +
+        '<div class="tv-limit-box" data-drag-limit="' + o.id + '">Limit ' + side + ' ' + qty + ' @ ' + fmtPrice(o.entry) +
+        '<button type="button" class="tv-x" data-cancel="' + o.id + '" aria-label="Cancel order">×</button></div></div>';
+    });
     el.innerHTML = html;
+  }
+
+  function movePending(id, price) {
+    if (!(price > 0)) return;
+    const o = (book.pending || []).find((p) => p.id === id);
+    if (!o) return;
+    o.entry = price;
+    o.liq = liqPriceOf(o.side, o.entry, o.lev, o.maxLev, o.platform);
+    savePaper();
+    renderOverlay();
+    renderPositions();
   }
 
   /* ——— render ——— */
@@ -1022,7 +1221,7 @@
         const blob = (c.name + ' ' + (NAMES[c.id] || '') + ' ' + c.id).toLowerCase();
         if (blob.indexOf(q) < 0) return;
       }
-      const px = markOf(c.id);
+      const px = displayPx(c.id);
       const chg = dayChange[c.id];
       const max = (coinSpec(c) && coinSpec(c).max) || '';
       const on = c.id === state.coin ? ' on' : '';
@@ -1038,7 +1237,7 @@
 
   function renderAssetHead() {
     const c = currentCoin();
-    const px = markOf(c.id);
+    const px = displayPx(c.id);
     const chg = dayChange[c.id];
     const meta = liveMeta[c.id] || {};
     if ($('assetName')) $('assetName').textContent = c.name;
@@ -1047,7 +1246,8 @@
     if ($('assetLev')) $('assetLev').textContent = levMax() + 'x';
     const fund = meta.funding != null ? ((meta.funding * 100).toFixed(4) + '%') : '—';
     const oi = meta.oi > 0 ? fmtUsd(meta.oi * (px || 0), false) : '';
-    if ($('assetMeta')) $('assetMeta').textContent = 'Fund ' + fund + (oi ? ' · OI ' + oi : '');
+    const markBit = meta.mark > 0 ? 'Mark ' + fmtPrice(meta.mark, true) + ' · ' : '';
+    if ($('assetMeta')) $('assetMeta').textContent = markBit + 'Fund ' + fund + (oi ? ' · OI ' + oi : '');
     if ($('assetPx')) $('assetPx').textContent = fmtPrice(px, true);
     const chgEl = $('assetChg');
     if (chgEl) { chgEl.textContent = fmtChgPct(chg); chgEl.className = chgClass(chg); }
@@ -1060,8 +1260,10 @@
       '<span class="meta">' + (p.marginMode || 'isolated') + ' ' + p.lev + 'x</span></div>' +
       '<div class="pos-grid">' +
       '<div><span>Size</span><b>' + trimFixed(p.qty, 6) + '</b></div>' +
+      '<div><span>Margin</span><b data-margin="' + p.id + '">' + fmtUsd(p.margin || 0) + '</b></div>' +
+      '<div><span>Position</span><b data-notional="' + p.id + '">' + fmtUsd(posNotional(p)) + '</b></div>' +
       '<div><span>Entry</span><b>' + fmtPrice(p.entry, true) + '</b></div>' +
-      '<div><span>Mark</span><b data-mark="' + p.coin + '">' + fmtPrice(markOf(p.coin), true) + '</b></div>' +
+      '<div><span>Mark</span><b data-mark="' + p.coin + '">' + fmtPrice(displayPx(p.coin), true) + '</b></div>' +
       '<div><span>Liq</span><b>' + (p.liq ? fmtPrice(p.liq, true) : '—') + '</b></div>' +
       '<div><span>TP / SL</span><b>' + (p.tp ? fmtPrice(p.tp) : '—') + ' / ' + (p.sl ? fmtPrice(p.sl) : '—') + '</b></div>' +
       '<div><span>PnL</span><b class="' + chgClass(u) + '" data-pnl="' + p.id + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) + '</b></div>' +
@@ -1120,12 +1322,14 @@
     }
     const list = book.positions || [];
     if (!list.length) { el.innerHTML = '<div class="pos-empty">No open positions</div>'; return; }
-    el.innerHTML = '<table class="book-table"><thead><tr><th>Side</th><th>Market</th><th>Mode</th><th class="num">Size</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Liq</th><th>TP / SL</th><th class="num">PnL</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="book-table"><thead><tr><th>Side</th><th>Market</th><th>Mode</th><th class="num">Size</th><th class="num">Margin</th><th class="num">Position</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Liq</th><th>TP / SL</th><th class="num">PnL</th><th></th></tr></thead><tbody>' +
       list.map((p) => {
         const u = posPnl(p), roe = posRoe(p);
         return '<tr data-open="' + p.coin + '"><td class="side ' + p.side + '">' + p.side.toUpperCase() + '</td><td><b>' + p.coin + '</b></td>' +
           '<td>' + (p.marginMode || 'isolated') + ' ' + p.lev + 'x</td>' +
           '<td class="num">' + trimFixed(p.qty, 6) + '</td>' +
+          '<td class="num" data-margin="' + p.id + '">' + fmtUsd(p.margin || 0) + '</td>' +
+          '<td class="num" data-notional="' + p.id + '">' + fmtUsd(posNotional(p)) + '</td>' +
           '<td class="num">' + fmtPrice(p.entry, true) + '</td>' +
           '<td class="num" data-mark="' + p.coin + '">' + fmtPrice(markOf(p.coin), true) + '</td>' +
           '<td class="num">' + (p.liq ? fmtPrice(p.liq, true) : '—') + '</td>' +
@@ -1156,7 +1360,7 @@
   function patchLiveUi() {
     document.querySelectorAll('.mkt-row[data-coin]').forEach((row) => {
       const id = row.getAttribute('data-coin');
-      const px = markOf(id);
+      const px = displayPx(id);
       const chg = dayChange[id];
       const b = row.querySelector('.mkt-px b');
       const c = row.querySelector('.mkt-px .chg, .mkt-px [class*="chg"]');
@@ -1165,6 +1369,10 @@
     });
     document.querySelectorAll('[data-mark]').forEach((el) => {
       el.textContent = fmtPrice(markOf(el.getAttribute('data-mark')), true);
+    });
+    document.querySelectorAll('[data-notional]').forEach((el) => {
+      const p = (book.positions || []).find((x) => x.id === el.getAttribute('data-notional'));
+      if (p) el.textContent = fmtUsd(posNotional(p));
     });
     document.querySelectorAll('[data-pnl]').forEach((el) => {
       const p = (book.positions || []).find((x) => x.id === el.getAttribute('data-pnl'));
@@ -1295,6 +1503,7 @@
     renderDrawings();
     renderAbout();
     renderLiveSrc();
+    if (isDesktop()) renderOb();
   }
 
   function openOrder(side) {
@@ -1461,6 +1670,21 @@
     if ($('bookTabs')) $('bookTabs').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-book]');
       if (b) setBookTab(b.getAttribute('data-book'));
+    });
+    if ($('obTabs')) $('obTabs').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-obtab]');
+      if (!b) return;
+      obTab = b.getAttribute('data-obtab') || 'book';
+      $('obTabs').querySelectorAll('[data-obtab]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-obtab') === obTab));
+      renderOb();
+    });
+    if ($('obGroup')) $('obGroup').addEventListener('change', () => {
+      obGroup = parseFloat($('obGroup').value) || 0;
+      renderOb();
+    });
+    if ($('deskBook')) $('deskBook').addEventListener('click', (ev) => {
+      const row = ev.target.closest('[data-ob-px]');
+      if (row) useObPrice(parseFloat(row.getAttribute('data-ob-px')));
     });
     $('btnIso').onclick = () => openMini('isoSheet');
     $('btnTyp').onclick = () => openMini('typSheet');
@@ -1647,23 +1871,41 @@
     window.addEventListener('resize', () => { syncDesktopLayout(); sizeChart(); });
     if (DESK_MQ.addEventListener) DESK_MQ.addEventListener('change', syncDesktopLayout);
     else if (DESK_MQ.addListener) DESK_MQ.addListener(syncDesktopLayout);
-    document.addEventListener('keydown', (ev) => {
+    window.addEventListener('keydown', (ev) => {
       if (!isDesktop()) return;
       const tag = ((ev.target && ev.target.tagName) || '').toLowerCase();
-      const typing = tag === 'input' || tag === 'textarea' || (ev.target && ev.target.isContentEditable);
+      const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || (ev.target && ev.target.isContentEditable);
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        closeMinis();
+        clearCrosshair();
+        if (measure) { measure = null; }
+        pendingTrend = null;
+        selectedDraw = null;
+        if (drawTool !== 'cursor') setDrawTool('cursor');
+        else renderDrawings();
+        if (typing && ev.target && ev.target.blur) ev.target.blur();
+        return;
+      }
       if (ev.key === '/' && !typing && !ev.metaKey && !ev.ctrlKey) {
         ev.preventDefault();
         if ($('mktSearch')) $('mktSearch').focus();
         return;
       }
-      if (ev.key === 'Escape') {
-        closeMinis();
-        clearCrosshair();
-        if (measure) { measure = null; renderDrawings(); }
-        if (typing && ev.target && ev.target.blur) ev.target.blur();
+      if (typing || ev.metaKey || ev.ctrlKey) return;
+      if (ev.altKey && !ev.shiftKey) {
+        if (ev.code === 'KeyH') { ev.preventDefault(); setDrawTool('hline'); }
+        else if (ev.code === 'KeyT') { ev.preventDefault(); setDrawTool('trend'); }
+        else if (ev.code === 'KeyC') { ev.preventDefault(); clearAllDraws(); }
+        else if (ev.code === 'KeyM') { ev.preventDefault(); setDrawTool('measure'); }
         return;
       }
-      if (typing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      if (ev.altKey) return;
+      if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedDraw) {
+        ev.preventDefault();
+        deleteSelectedDraw();
+        return;
+      }
       if (ev.key === 'l' || ev.key === 'L') openOrder('long');
       else if (ev.key === 's' || ev.key === 'S') openOrder('short');
       else if (ev.key === 'c' || ev.key === 'C') setRightTab(state.rightTab === 'calc' ? 'trade' : 'calc');
@@ -1716,28 +1958,25 @@
     el.className = 'live-src' + (age < 2500 ? ' on' : connected || age < 8000 ? ' stale' : ' off');
   }
 
-  async function fetchHlKlines(coin, tf) {
+  async function fetchHlKlines(coin, tf, startMs, endMs) {
     if (!coin) return [];
-    const end = Date.now();
-    const span = TF_LOOKBACK_MS[tf] || 12 * 3600e3;
-    const raw = await hlInfo({ type: 'candleSnapshot', req: { coin: coin, interval: tf, startTime: end - span, endTime: end } });
-    const list = (raw || []).map(parseBar).filter((b) => b.time && b.close > 0);
-    list.sort((a, b) => a.time - b.time);
-    const seen = {};
-    return list.filter((b) => { if (seen[b.time]) return false; seen[b.time] = 1; return true; });
+    const end = endMs || Date.now();
+    const start = startMs || (end - (TF_MS[tf] || 60e3) * HL_CANDLE_CAP);
+    const raw = await hlInfo({ type: 'candleSnapshot', req: { coin: coin, interval: tf, startTime: start, endTime: end } });
+    return normalizeBars(raw, tf);
   }
 
-  async function fetchAsterKlines(symbol, tf) {
+  async function fetchAsterKlines(symbol, tf, endMs, limit) {
     const interval = tf === '1d' ? '1d' : tf;
-    const r = await fetch(ASTER_API + '/klines?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=500', { cache: 'no-store' });
+    let url = ASTER_API + '/klines?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + (limit || ASTER_KLINE_LIMIT);
+    if (endMs) url += '&endTime=' + Math.floor(endMs);
+    const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) throw new Error('klines ' + r.status);
     const raw = await r.json();
     const list = (Array.isArray(raw) ? raw : []).map((row) => ({
-      time: Math.floor(Number(row[0]) / 1000),
-      open: +row[1], high: +row[2], low: +row[3], close: +row[4]
-    })).filter((b) => b.time && b.close > 0);
-    const seen = {};
-    return list.filter((b) => { if (seen[b.time]) return false; seen[b.time] = 1; return true; });
+      time: toUnixSec(row[0]), open: +row[1], high: +row[2], low: +row[3], close: +row[4]
+    }));
+    return normalizeBars(list, tf);
   }
 
   function closeLiveWs() {
@@ -1783,6 +2022,8 @@
         wsRetry = 0;
         const subs = [
           { type: 'candle', coin: coin, interval: state.tf },
+          { type: 'trades', coin: coin },
+          { type: 'l2Book', coin: coin },
           { type: 'allMids' },
           { type: 'allMids', dex: 'xyz' },
           { type: 'activeAssetCtx', coin: coin }
@@ -1805,7 +2046,7 @@
     const sym = (c.aster && c.aster.symbol || '').toLowerCase();
     if (!sym) return;
     const tf = state.tf === '1d' ? '1d' : state.tf;
-    const streams = '!markPrice@arr@1s/' + sym + '@markPrice@1s/' + sym + '@aggTrade/' + sym + '@kline_' + tf;
+    const streams = '!markPrice@arr@1s/' + sym + '@markPrice@1s/' + sym + '@aggTrade/' + sym + '@kline_' + tf + '/' + sym + '@depth20@100ms';
     const url = 'wss://fstream.asterdex.com/stream?streams=' + streams;
     wsKind = 'aster';
     try {
@@ -1820,32 +2061,45 @@
   }
 
   function handleHlMessage(msg, coin) {
+    if (isHl() === false) return;
     const ch = msg.channel || msg.type;
     const d = msg.data;
     if (!d) return;
-    if (ch === 'candle' || (d.s || d.T || d.t) && (d.o != null && d.c != null)) {
-      if (d.s && coin && d.s !== coin && d.s !== coin.replace(/^xyz:/, '')) {
-        /* maybe still ok */
+    if (ch === 'candle') {
+      const bar = parseBar(d, state.tf);
+      if (bar) {
+        applyOfficialBar(bar);
+        applyTradeTick(bar.close, 'hl');
       }
-      applyOfficialBar(parseBar(d));
-    }
-    if (ch === 'allMids' || d.mids) {
+    } else if (ch === 'trades') {
+      const list = Array.isArray(d) ? d : [d];
+      list.forEach((t) => applyHlTrade(t));
+    } else if (ch === 'l2Book') {
+      applyL2FromHl(d);
+    } else if (ch === 'allMids' || d.mids) {
       const mids = d.mids || d;
       applyMids(mids);
       const px = midForCoin(mids, currentCoin());
-      if (px > 0) applyPriceTick(px);
-    }
-    if (ch === 'activeAssetCtx' || d.ctx || d.coin) {
+      if (px > 0) {
+        setMeta(state.coin, { mid: px, px: (metaOf(state.coin).trade > 0 ? metaOf(state.coin).px : px) });
+        if (!(state.livePrice > 0)) { state.livePrice = px; renderAssetHead(); }
+        patchLiveUi();
+      }
+    } else if (ch === 'activeAssetCtx') {
       const ctx = d.ctx || d;
-      const px = parseFloat(ctx.markPx || ctx.midPx || ctx.oraclePx);
+      const mark = parseFloat(ctx.markPx);
+      const mid = parseFloat(ctx.midPx);
       const extra = {};
+      if (mark > 0) extra.mark = mark;
+      if (mid > 0) extra.mid = mid;
       const fund = parseFloat(ctx.funding);
       const oi = parseFloat(ctx.openInterest);
       const vol = parseFloat(ctx.dayNtlVlm);
       if (isFinite(fund)) extra.funding = fund;
       if (oi > 0) extra.oi = oi;
       if (vol > 0) extra.volume = vol;
-      if (px > 0) applyPriceTick(px, extra);
+      setMeta(state.coin, extra);
+      renderAssetHead();
     }
   }
 
@@ -1862,7 +2116,11 @@
     if (!mids) return;
     COINS.forEach((c) => {
       const px = midForCoin(mids, c);
-      if (px > 0) liveMeta[c.id] = Object.assign({}, liveMeta[c.id], { px: px });
+      if (px > 0) {
+        const extra = { mid: px };
+        if (!(liveMeta[c.id] && liveMeta[c.id].trade > 0)) extra.px = px;
+        setMeta(c.id, extra);
+      }
     });
   }
 
@@ -1879,70 +2137,119 @@
         const extra = {};
         const fund = parseFloat(row.r);
         if (isFinite(fund)) extra.funding = fund;
-        liveMeta[coin.id] = Object.assign({}, liveMeta[coin.id], { px: px }, extra);
-        if (coin.id === state.coin) applyPriceTick(px, extra);
+        setMeta(coin.id, Object.assign({ mark: px }, extra));
+        if (coin.id === state.coin) renderAssetHead();
       });
       if (state.view === 'markets' && !liveRaf) liveRaf = requestAnimationFrame(function () { liveRaf = 0; renderMarkets(); renderLiveSrc(); });
       return;
     }
     const type = d.e;
-    if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade')) {
+    if (isHl()) return;
+    if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade' && type !== 'depthUpdate')) {
       const px = parseFloat(d.p || d.markPrice);
       const extra = {};
       const fund = parseFloat(d.r);
       if (isFinite(fund)) extra.funding = fund;
-      if (px > 0) applyPriceTick(px, extra);
+      if (px > 0) extra.mark = px;
+      setMeta(state.coin, extra);
+      renderAssetHead();
     }
     if (type === 'aggTrade') {
       const px = parseFloat(d.p);
-      if (px > 0) applyPriceTick(px);
+      const sz = parseFloat(d.q);
+      if (px > 0) applyTradeTick(px, 'aster');
+      if (px > 0 && sz > 0) pushTape(px, sz, d.m ? 'sell' : 'buy', d.T);
     }
     if (type === 'kline' && d.k) {
       const k = d.k;
-      applyOfficialBar({
-        time: Math.floor(Number(k.t) / 1000),
-        open: +k.o, high: +k.h, low: +k.l, close: +k.c
-      });
-      const px = parseFloat(k.c);
-      if (px > 0) applyPriceTick(px);
+      const bar = normalizeBars([{ time: toUnixSec(k.t), open: +k.o, high: +k.h, low: +k.l, close: +k.c }], state.tf)[0];
+      if (bar) {
+        applyOfficialBar(bar);
+        applyTradeTick(bar.close, 'aster');
+      }
+    }
+    if (type === 'depthUpdate' || d.b || d.a || d.bids || d.asks) {
+      applyL2FromAster(d);
     }
   }
 
   function applyOfficialBar(bar) {
     if (!bar || !bar.time || !(bar.close > 0) || !series) return;
+    bar = normalizeBars([bar], state.tf)[0];
+    if (!bar) return;
     const last = bars[bars.length - 1];
-    if (!last || bar.time > last.time) bars.push(bar);
-    else if (bar.time === last.time) bars[bars.length - 1] = bar;
-    else return;
-    series.update(bars[bars.length - 1]);
+    if (!last) {
+      bars = [bar];
+      series.setData(bars);
+      return;
+    }
+    lastTickAt = Date.now();
+    if (bar.time === last.time) {
+      bars[bars.length - 1] = {
+        time: bar.time, open: last.open,
+        high: Math.max(last.high, bar.high),
+        low: Math.min(last.low, bar.low),
+        close: bar.close
+      };
+      series.update(bars[bars.length - 1]);
+    } else if (bar.time > last.time) {
+      bars.push(bar);
+      series.update(bar);
+    }
   }
 
-  function applyPriceTick(px, extra) {
-    if (!(px > 0)) return;
-    pendingTick = { px: px, extra: extra || null, t: Date.now() };
+  function venueOk(src) {
+    if (src === 'aster') return !isHl();
+    if (src === 'hl') return isHl();
+    return true;
+  }
+  function applyTradeTick(px, src) {
+    if (!(px > 0) || !venueOk(src)) return;
+    pendingTick = { px: px, src: src, t: Date.now() };
     if (!liveRaf) liveRaf = requestAnimationFrame(flushTick);
   }
-
+  function applyPriceTick(px, extra) {
+    /* legacy: treat as trade only when no separate mark path is used */
+    if (extra && (extra.mark || extra.funding || extra.oi)) {
+      if (extra.mark > 0 || px > 0) setMeta(state.coin, Object.assign({}, extra, extra.mark ? {} : {}));
+      return;
+    }
+    applyTradeTick(px, isHl() ? 'hl' : 'aster');
+  }
   function flushTick() {
     liveRaf = 0;
     const t = pendingTick;
     if (!t) return;
     pendingTick = null;
+    if (!venueOk(t.src)) return;
     lastTickAt = t.t;
     state.livePrice = t.px;
     state.priceStatus = 'live';
-    liveMeta[state.coin] = Object.assign({}, liveMeta[state.coin], { px: t.px }, t.extra || {});
+    setMeta(state.coin, { trade: t.px, px: t.px });
     if (series && bars.length) {
+      const buck = bucketTime(t.t / 1000 || Date.now() / 1000, state.tf);
       const last = bars[bars.length - 1];
-      const bar = {
-        time: last.time,
-        open: last.open,
-        high: Math.max(last.high, t.px),
-        low: Math.min(last.low, t.px),
-        close: t.px
-      };
-      bars[bars.length - 1] = bar;
-      series.update(bar);
+      if (last && last.time === buck) {
+        const bar = {
+          time: last.time,
+          open: last.open,
+          high: Math.max(last.high, t.px),
+          low: Math.min(last.low, t.px),
+          close: t.px
+        };
+        bars[bars.length - 1] = bar;
+        series.update(bar);
+      } else if (last && buck > last.time) {
+        const bar = {
+          time: buck,
+          open: last.close,
+          high: Math.max(last.close, t.px),
+          low: Math.min(last.close, t.px),
+          close: t.px
+        };
+        bars.push(bar);
+        series.update(bar);
+      }
     }
     tickBook();
     renderAssetHead();
@@ -1950,11 +2257,131 @@
     renderDrawings();
     renderLiveSrc();
     if (crosshair) renderCrosshair();
-    if (!$('orderSheet').hidden) {
+    if (!$('orderSheet').hidden || isDesktop()) {
       if ($('orderSub')) $('orderSub').textContent = fmtPrice(t.px, true) + ' · ' + platformName() + ' · paper';
-      if ($('estLiq')) renderOrder();
     }
     patchLiveUi();
+  }
+
+  function applyHlTrade(t) {
+    if (!t) return;
+    const px = parseFloat(t.px);
+    const sz = parseFloat(t.sz);
+    if (px > 0) applyTradeTick(px, 'hl');
+    if (px > 0 && sz > 0) {
+      const side = (t.side === 'A' || t.side === 'sell') ? 'sell' : 'buy';
+      pushTape(px, sz, side, t.time);
+    }
+  }
+  function applyL2FromHl(d) {
+    if (!d || !d.levels || d.levels.length < 2) return;
+    const bids = (d.levels[0] || []).map((x) => [parseFloat(x.px || x[0]), parseFloat(x.sz || x[1])]).filter((r) => r[0] > 0 && r[1] > 0);
+    const asks = (d.levels[1] || []).map((x) => [parseFloat(x.px || x[0]), parseFloat(x.sz || x[1])]).filter((r) => r[0] > 0 && r[1] > 0);
+    lastTickAt = Date.now();
+    obRaw = { bids: bids, asks: asks };
+    scheduleOb();
+  }
+  function applyL2FromAster(d) {
+    const bidsRaw = d.b || d.bids || [];
+    const asksRaw = d.a || d.asks || [];
+    if (!bidsRaw.length && !asksRaw.length) return;
+    const bids = bidsRaw.map((x) => [parseFloat(x[0]), parseFloat(x[1])]).filter((r) => r[0] > 0 && r[1] > 0);
+    const asks = asksRaw.map((x) => [parseFloat(x[0]), parseFloat(x[1])]).filter((r) => r[0] > 0 && r[1] > 0);
+    lastTickAt = Date.now();
+    obRaw = { bids: bids, asks: asks };
+    scheduleOb();
+  }
+  function pushTape(px, sz, side, t) {
+    tape.unshift({ px: px, sz: sz, side: side, t: t || Date.now() });
+    if (tape.length > 80) tape.length = 80;
+    scheduleOb();
+  }
+  function resetOrderBook() {
+    obRaw = { bids: [], asks: [] };
+    tape = [];
+    scheduleOb();
+  }
+  function scheduleOb() {
+    if (!isDesktop()) return;
+    if (!obRaf) obRaf = requestAnimationFrame(function () { obRaf = 0; renderOb(); });
+  }
+  function groupSteps(px) {
+    if (px >= 10000) return [1, 2, 5, 10, 50, 100];
+    if (px >= 1000) return [0.1, 0.5, 1, 2, 5, 10];
+    if (px >= 100) return [0.01, 0.05, 0.1, 0.5, 1, 5];
+    if (px >= 10) return [0.001, 0.01, 0.05, 0.1, 0.5, 1];
+    return [0.0001, 0.001, 0.01, 0.05, 0.1];
+  }
+  function groupLevels(rows, step, isBid) {
+    const map = new Map();
+    const s = step || 0;
+    rows.forEach((r) => {
+      const px = s > 0 ? (isBid ? Math.floor(r[0] / s) * s : Math.ceil(r[0] / s) * s) : r[0];
+      map.set(px, (map.get(px) || 0) + r[1]);
+    });
+    const out = Array.from(map.entries()).map((e) => [e[0], e[1]]);
+    out.sort((a, b) => isBid ? b[0] - a[0] : a[0] - b[0]);
+    return out;
+  }
+  function renderOb() {
+    if (!isDesktop()) return;
+    const bookEl = $('obBook');
+    const tradesEl = $('obTrades');
+    if (!bookEl || !tradesEl) return;
+    const sel = $('obGroup');
+    const mid = displayPx(state.coin) || ((obRaw.bids[0] && obRaw.bids[0][0]) || 0);
+    const steps = groupSteps(mid || 1);
+    if (sel && (obSteps.join() !== steps.join())) {
+      obSteps = steps;
+      const cur = obGroup;
+      sel.innerHTML = '<option value="0">Tick</option>' + steps.map((g) => '<option value="' + g + '"' + (g === cur ? ' selected' : '') + '>' + g + '</option>').join('');
+      if (cur && steps.indexOf(cur) < 0) { obGroup = 0; sel.value = '0'; }
+    }
+    if (obTab === 'trades') {
+      bookEl.hidden = true; tradesEl.hidden = false;
+      if (!tape.length) { tradesEl.innerHTML = '<div class="ob-empty">No trades yet</div>'; return; }
+      tradesEl.innerHTML = '<div class="ob-head"><span>Price</span><span class="sz">Size</span><span class="t">Time</span></div>' +
+        tape.map((t) => {
+          const d = new Date(t.t > 1e12 ? t.t : t.t);
+          const hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+          return '<div class="ob-tr ' + t.side + '"><span class="px">' + fmtPrice(t.px) + '</span><span class="sz">' + trimFixed(t.sz, t.sz >= 1 ? 3 : 5) + '</span><span class="t">' + hh + '</span></div>';
+        }).join('');
+      return;
+    }
+    bookEl.hidden = false; tradesEl.hidden = true;
+    const step = obGroup > 0 ? obGroup : 0;
+    const bids = groupLevels(obRaw.bids, step, true).slice(0, 14);
+    const asks = groupLevels(obRaw.asks, step, false).slice(0, 14).reverse();
+    if (!bids.length && !asks.length) { bookEl.innerHTML = '<div class="ob-empty">No book</div>'; return; }
+    const bestBid = bids.length ? bids[0][0] : 0;
+    const bestAsk = asks.length ? asks[asks.length - 1][0] : 0;
+    const spread = (bestBid && bestAsk) ? (bestAsk - bestBid) : 0;
+    const midPx = (bestBid && bestAsk) ? (bestBid + bestAsk) / 2 : mid;
+    let acc = 0;
+    const askRows = asks.map((r) => { acc += r[1]; return [r[0], r[1], acc]; });
+    acc = 0;
+    const bidRows = bids.map((r) => { acc += r[1]; return [r[0], r[1], acc]; });
+    const maxTot = Math.max.apply(null, askRows.map((r) => r[2]).concat(bidRows.map((r) => r[2])).concat([1]));
+    function rowHtml(r, kind) {
+      const pct = Math.max(2, Math.min(100, (r[2] / maxTot) * 100));
+      return '<button type="button" class="ob-row ' + kind + '" data-ob-px="' + r[0] + '">' +
+        '<i class="ob-bar" style="width:' + pct.toFixed(1) + '%"></i>' +
+        '<span class="px">' + fmtPrice(r[0]) + '</span><span class="sz">' + trimFixed(r[1], r[1] >= 1 ? 3 : 5) + '</span>' +
+        '<span class="tot">' + trimFixed(r[2], r[2] >= 1 ? 3 : 5) + '</span></button>';
+    }
+    bookEl.innerHTML = '<div class="ob-head"><span>Price</span><span class="sz">Size</span><span class="tot">Total</span></div>' +
+      askRows.map((r) => rowHtml(r, 'ask')).join('') +
+      '<div class="ob-mid"><span>' + fmtPrice(midPx, true) + '</span><span class="spr">' + (spread ? fmtPrice(spread) : '—') + '</span><span></span></div>' +
+      bidRows.map((r) => rowHtml(r, 'bid')).join('');
+  }
+  function useObPrice(px) {
+    if (!(px > 0)) return;
+    state.typ = 'limit';
+    state.limitPx = px;
+    saveUi();
+    setRightTab('trade');
+    openOrder(state.side || 'long');
+    renderOrder();
   }
 
   /* ——— about ——— */
@@ -2199,6 +2626,33 @@
     return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
   }
 
+  function setDrawTool(t) {
+    if (t !== 'cursor' && t !== 'hline' && t !== 'trend' && t !== 'measure') return;
+    drawTool = t;
+    pendingTrend = null;
+    if (t !== 'measure') measure = null;
+    const list = $('toolList');
+    if (list) list.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-tool') === t));
+    setChartInteractive(t === 'cursor');
+    renderDrawings();
+  }
+  function deleteSelectedDraw() {
+    if (!selectedDraw) return false;
+    drawings[state.coin] = coinDraws().filter((d) => d.id !== selectedDraw);
+    selectedDraw = null;
+    saveDrawings();
+    renderDrawings();
+    return true;
+  }
+  function clearAllDraws() {
+    if (!coinDraws().length) return;
+    if (!confirm('Clear all drawings on ' + state.coin + '?')) return;
+    drawings[state.coin] = [];
+    selectedDraw = null;
+    saveDrawings();
+    renderDrawings();
+  }
+
   function bindChartUi() {
     loadDrawings();
     const colors = $('toolColors');
@@ -2237,24 +2691,9 @@
       const b = ev.target.closest && ev.target.closest('[data-tool]');
       if (!b) return;
       const t = b.getAttribute('data-tool');
-      if (t === 'del') {
-        if (selectedDraw) {
-          drawings[state.coin] = coinDraws().filter((d) => d.id !== selectedDraw);
-          selectedDraw = null; saveDrawings(); renderDrawings();
-        }
-        return;
-      }
-      if (t === 'clear') {
-        if (coinDraws().length && confirm('Clear all drawings on ' + state.coin + '?')) {
-          drawings[state.coin] = []; selectedDraw = null; saveDrawings(); renderDrawings();
-        }
-        return;
-      }
-      drawTool = t;
-      $('toolList').querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-tool') === t));
-      pendingTrend = null;
-      if (t === 'cursor') setChartInteractive(true);
-      else setChartInteractive(false);
+      if (t === 'del') { deleteSelectedDraw(); return; }
+      if (t === 'clear') { clearAllDraws(); return; }
+      setDrawTool(t);
     });
     if ($('limitOrderBtn')) $('limitOrderBtn').onclick = function (ev) {
       ev.preventDefault(); ev.stopPropagation();
@@ -2266,8 +2705,18 @@
     let start = null;
     let moved = false;
 
+    let dragLimit = null;
     function onDown(ev) {
-      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn'))) return;
+      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn') || ev.target.closest('.tv-x'))) return;
+      const dragEl = ev.target.closest && ev.target.closest('[data-drag-limit]');
+      if (dragEl) {
+        ev.preventDefault();
+        dragLimit = dragEl.getAttribute('data-drag-limit');
+        start = { x: 0, y: 0, t: Date.now() };
+        moved = false;
+        setChartInteractive(false);
+        return;
+      }
       const pt = localXY(ev, host);
       start = { x: pt.x, y: pt.y, t: Date.now(), shift: !!(ev.shiftKey && ev.pointerType !== 'touch'), btn: ev.button };
       moved = false;
@@ -2293,7 +2742,7 @@
           const price = priceAtY(start.y);
           if (!(price > 0)) return;
           setChartInteractive(false);
-          crosshair = { price: price, x: start.x };
+          crosshair = { price: price, x: start.x, drag: true };
           renderCrosshair();
         }, 300);
       }
@@ -2308,10 +2757,16 @@
         renderDrawings();
         return;
       }
-      if (crosshair) {
+      if (crosshair && crosshair.drag) {
         ev.preventDefault();
         const price = priceAtY(pt.y);
         if (price > 0) { crosshair.price = price; crosshair.x = pt.x; renderCrosshair(); }
+        return;
+      }
+      if (dragLimit) {
+        ev.preventDefault();
+        const price = priceAtY(pt.y);
+        if (price > 0) movePending(dragLimit, price);
         return;
       }
       if (drawTool === 'trend' && pendingTrend) {
@@ -2345,9 +2800,17 @@
         if (drawTool !== 'measure') setChartInteractive(true);
         return;
       }
-      if (crosshair) {
-        // keep until next tap outside / limit click
+      if (dragLimit) {
+        setChartInteractive(true);
+        dragLimit = null;
         start = null;
+        return;
+      }
+      if (crosshair && crosshair.drag) {
+        crosshair.drag = false;
+        crosshair.pinned = true;
+        start = null;
+        setChartInteractive(true);
         return;
       }
       if (drawTool === 'hline' && start && !moved) {
@@ -2370,15 +2833,27 @@
           saveDrawings(); renderDrawings();
         }
       } else if (drawTool === 'cursor' && start && !moved) {
-        if (crosshair) clearCrosshair();
-        else if (measure) { measure = null; renderDrawings(); }
-        else {
-          const hit = hitDrawing(pt.x, pt.y);
-          selectedDraw = hit ? hit.id : null;
-          if (hit && hit.color) {
+        const hit = hitDrawing(pt.x, pt.y);
+        if (hit) {
+          selectedDraw = hit.id;
+          if (hit.color) {
             drawColor = hit.color;
             if ($('toolColors')) $('toolColors').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.getAttribute('data-color') === drawColor));
           }
+          renderDrawings();
+        } else if (isDesktop() && ev.pointerType !== 'touch') {
+          const price = priceAtY(pt.y);
+          if (price > 0) {
+            selectedDraw = null;
+            crosshair = { price: price, x: pt.x, pinned: true };
+            renderCrosshair();
+            renderDrawings();
+          }
+        } else if (crosshair) {
+          /* keep mobile long-press pin */
+        } else if (measure) { measure = null; renderDrawings(); }
+        else {
+          selectedDraw = null;
           renderDrawings();
         }
       }
@@ -2386,20 +2861,14 @@
     }
 
     function onHover(ev) {
-      if (!isDesktop() || ev.pointerType === 'touch') return;
-      if (start || measure || drawTool !== 'cursor') return;
-      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn'))) return;
-      const pt = localXY(ev, host);
-      const price = priceAtY(pt.y);
-      if (!(price > 0)) return;
-      crosshair = { price: price, x: pt.x, hover: true };
-      renderCrosshair();
+      /* Hover must not show the Limit order pill. Built-in chart crosshair is enough. */
     }
-    function onLeave(ev) {
-      if (!isDesktop() || ev.pointerType === 'touch') return;
-      if (start) return;
-      if (crosshair && crosshair.hover) clearCrosshair();
-    }
+    function onLeave(ev) { /* keep a pinned limit crosshair */ }
+    document.addEventListener('pointerdown', function (ev) {
+      if (!crosshair || !crosshair.pinned) return;
+      if (ev.target.closest && (ev.target.closest('#chartWrap') || ev.target.closest('#limitOrderBtn'))) return;
+      clearCrosshair();
+    }, true);
     host.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -2408,7 +2877,6 @@
     host.addEventListener('contextmenu', (ev) => {
       if (drawTool !== 'cursor' || crosshair) ev.preventDefault();
     });
-    let pendingTrend = null;
     window.pendingTrendRef = function () { return pendingTrend; };
   }
 

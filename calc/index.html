@@ -9,7 +9,7 @@
   <title>Paper Trade · TP/SL</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2386e8a8'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23000000'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="logos/BTC.png" />
-  <link rel="stylesheet" href="app.css?v=20261123j" />
+  <link rel="stylesheet" href="app.css?v=20261123k" />
 </head>
 <body>
   <div class="shell">
@@ -89,12 +89,12 @@
           <button type="button" class="tool-btn tool-toggle" id="toolsToggle" aria-label="Drawing tools" title="Tools">✎</button>
           <div class="tool-list" id="toolList">
             <button type="button" class="tool-btn on" data-tool="cursor" title="Pan">✥</button>
-            <button type="button" class="tool-btn" data-tool="hline" title="Horizontal line">—</button>
-            <button type="button" class="tool-btn" data-tool="trend" title="Trend line">╱</button>
-            <button type="button" class="tool-btn" data-tool="measure" title="Measure">▣</button>
+            <button type="button" class="tool-btn" data-tool="hline" title="Horizontal line (Alt+H)">—</button>
+            <button type="button" class="tool-btn" data-tool="trend" title="Trend line (Alt+T)">╱</button>
+            <button type="button" class="tool-btn" data-tool="measure" title="Measure (Shift+drag)">▣</button>
             <div class="tool-colors" id="toolColors" role="group" aria-label="Color"></div>
-            <button type="button" class="tool-btn" data-tool="del" title="Delete selected">⌫</button>
-            <button type="button" class="tool-btn" data-tool="clear" title="Clear all">✕</button>
+            <button type="button" class="tool-btn" data-tool="del" title="Delete selected (Del)">⌫</button>
+            <button type="button" class="tool-btn" data-tool="clear" title="Clear all (Alt+C)">✕</button>
           </div>
         </div>
         <div id="chart" class="chart"></div>
@@ -113,6 +113,22 @@
         <button type="button" class="btn-short" id="btnShort">Short</button>
       </footer>
     </section>
+
+
+    <aside class="desk-book" id="deskBook">
+      <div class="desk-rtabs" id="obTabs" role="tablist" aria-label="Order book">
+        <button type="button" data-obtab="book" class="on">Book</button>
+        <button type="button" data-obtab="trades">Trades</button>
+      </div>
+      <div class="ob-toolbar" id="obToolbar">
+        <label for="obGroup">Group</label>
+        <select id="obGroup" aria-label="Price grouping"></select>
+      </div>
+      <div id="obPanel" class="ob-panel">
+        <div id="obBook" class="ob-book"></div>
+        <div id="obTrades" class="ob-trades" hidden></div>
+      </div>
+    </aside>
 
     <aside class="desk-right" id="deskRight">
       <div class="desk-rtabs" id="deskRightTabs" role="tablist" aria-label="Order panel">
@@ -213,7 +229,7 @@
     <button type="button" class="submit long" id="btnSubmit">Long VVV</button>
   </aside>
       <section id="screenCalc" class="screen">
-        <iframe id="calcFrame" class="calc-frame" title="TP/SL Calculator" src="classic.html?v=20261123j"></iframe>
+        <iframe id="calcFrame" class="calc-frame" title="TP/SL Calculator" src="classic.html?v=20261123k"></iframe>
       </section>
     </aside>
 
@@ -271,6 +287,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="app.js?v=20261123j"></script>
+  <script src="app.js?v=20261123k"></script>
 </body>
 </html>

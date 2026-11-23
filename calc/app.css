@@ -103,6 +103,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .chart-wrap { position: relative; flex: 0 0 auto; height: 38vh; min-height: 200px; max-height: 420px; background: #000; overflow: hidden; z-index: 1; }
 .chart { position: absolute; inset: 0; }
 .chart a { display: none !important; }
+.chart-empty { position:absolute; left:12px; top:12px; color:#8a8a8a; font-size:12px; z-index:3; }
 .chart-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
 .tv-row { position: absolute; left: 0; right: 0; height: 0; }
 .tv-hline { position: absolute; left: 0; right: 48px; top: 0; height: 0; border-top: 1px dashed var(--lc, #86e8a8); transform: translateY(-50%); opacity: .85; }
@@ -120,6 +121,22 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   padding: 3px 8px; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .tv-pnl.neg { color: var(--red-text); border-color: var(--red); }
+.tv-pnl { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
+.tv-limit-line { border-top: 1px dashed #fff; opacity: .95; }
+.tv-limit-box {
+  position: absolute; left: 52px; top: 0; transform: translateY(-50%);
+  background: #111; color: #fff; border: 1px solid #fff;
+  font-size: 10px; line-height: 1.2; padding: 2px 6px 2px 8px;
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 3px; white-space: nowrap; cursor: ns-resize;
+  pointer-events: auto; z-index: 6; font-variant-numeric: tabular-nums;
+}
+.tv-x {
+  pointer-events: auto; margin: 0; width: 16px; height: 16px; padding: 0;
+  border: 0; border-radius: 2px; background: transparent; color: inherit;
+  font-size: 14px; line-height: 16px; cursor: pointer; font-weight: 700;
+}
+.tv-x:hover, .tv-x:active { background: rgba(255,255,255,.18); }
 
 .tf-row {
   display: flex; align-items: center; gap: 6px;
@@ -422,7 +439,7 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
 .about-stats .v { font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* Desktop-only chrome is hidden on mobile so the phone layout stays unchanged. */
-.desk-top, .desk-rtabs, .book-tabs, .side-toggle, .mkt-search-wrap { display: none; }
+.desk-top, .desk-rtabs, .book-tabs, .side-toggle, .mkt-search-wrap, .desk-book { display: none; }
 
 @media (min-width: 1024px) {
   html, body {
@@ -440,12 +457,12 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
     padding: 0;
     box-shadow: none;
     display: grid;
-    grid-template-columns: 260px minmax(0, 1fr) 340px;
+    grid-template-columns: 230px minmax(0, 1fr) 200px 320px;
     grid-template-rows: 52px minmax(0, 1fr) minmax(168px, 24vh);
     grid-template-areas:
-      "top top top"
-      "mkts chart order"
-      "book book book";
+      "top top top top"
+      "mkts chart ob order"
+      "pos pos pos pos";
     overflow: hidden;
   }
   .desk-top {
@@ -649,7 +666,7 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
   }
 
   #screenPos {
-    grid-area: book;
+    grid-area: pos;
     flex-direction: column;
     border-top: 1px solid #1a1a1a;
     background: #050505;
@@ -698,17 +715,69 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
   .toast { bottom: 24px; }
 
   body.is-desk .chart-tools.collapsed .tool-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .desk-book {
+    grid-area: ob;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid #1a1a1a;
+    background: #050505;
+    overflow: hidden;
+  }
+  .desk-book .desk-rtabs { display: flex; }
+  .ob-toolbar {
+    display: flex; align-items: center; gap: 8px; flex: none;
+    padding: 6px 10px; border-bottom: 1px solid #1a1a1a;
+    color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .ob-toolbar select {
+    flex: 1; min-width: 0; height: 26px; background: #111; color: #eee;
+    border: 1px solid #2a2a2a; border-radius: 6px; font-size: 12px; font-weight: 700;
+  }
+  .ob-panel { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .ob-book, .ob-trades { flex: 1 1 auto; min-height: 0; overflow: auto; font-variant-numeric: tabular-nums; }
+  .ob-head, .ob-row, .ob-mid, .ob-tr {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
+    padding: 2px 10px; font-size: 11px; align-items: center;
+  }
+  .ob-head { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding-top: 8px; padding-bottom: 4px; }
+  .ob-row { position: relative; cursor: pointer; z-index: 0; }
+  .ob-row:hover { background: #151515; }
+  .ob-row span, .ob-mid span, .ob-tr span, .ob-head span { position: relative; z-index: 1; }
+  .ob-row .px { font-weight: 700; }
+  .ob-row.ask .px { color: var(--red-text); }
+  .ob-row.bid .px { color: var(--green-text); }
+  .ob-row .sz, .ob-row .tot, .ob-tr .sz { color: #ddd; text-align: right; }
+  .ob-bar {
+    position: absolute; top: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none; opacity: .28;
+  }
+  .ob-row.ask .ob-bar { background: var(--red); }
+  .ob-row.bid .ob-bar { background: var(--green); }
+  .ob-mid {
+    padding: 7px 10px; margin: 4px 0; background: #111; border-top: 1px solid #1a1a1a; border-bottom: 1px solid #1a1a1a;
+    font-weight: 800; color: #fff;
+  }
+  .ob-mid .spr { color: var(--muted); font-weight: 700; font-size: 10px; text-align: center; }
+  .ob-empty { padding: 24px 12px; text-align: center; color: var(--muted); font-size: 12px; }
+  .ob-tr { padding: 3px 10px; }
+  .ob-tr .px { font-weight: 700; }
+  .ob-tr.buy .px { color: var(--green-text); }
+  .ob-tr.sell .px { color: var(--red-text); }
+  .ob-tr .t { color: var(--muted); text-align: right; }
 }
+
 
 @media (min-width: 1440px) {
   .shell {
-    grid-template-columns: 300px minmax(0, 1fr) 380px;
+    grid-template-columns: 280px minmax(0, 1fr) 230px 350px;
     grid-template-rows: 52px minmax(0, 1fr) minmax(180px, 26vh);
   }
 }
 @media (min-width: 1920px) {
   .shell {
-    grid-template-columns: 320px minmax(0, 1fr) 400px;
+    grid-template-columns: 300px minmax(0, 1fr) 250px 380px;
     grid-template-rows: 56px minmax(0, 1fr) minmax(200px, 28vh);
   }
 }
