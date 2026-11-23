@@ -302,3 +302,5 @@ body.pro-view .demo-layout{grid-template-columns:minmax(0,1fr) 240px 400px}
 .size-ticks button:hover,.size-ticks button.on{color:var(--cy)}
 .size-avail{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:11px;color:var(--mut)}
 .size-avail b{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums}
+
+.build-tag{font-size:9px;letter-spacing:.08em;color:var(--dim);text-transform:lowercase;white-space:nowrap}
