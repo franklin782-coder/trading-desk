@@ -5,7 +5,8 @@
   const CALC_KEY = 'tpsl-calc';
   const PAPER_KEY = 'td-calc-paper-v1';
   const UI_KEY = 'td-calc-ui-v1';
-  const START_BAL = 1000000;
+  const START_BAL = 30000;
+  const OLD_START_BAL = 1000000;
   const BASE_MMR = 0.012;
   const TP_CHIPS = [10, 25, 50, 100];
   const SL_CHIPS = [-10, -25, -50, -75];
@@ -23,7 +24,9 @@
 
   const NAMES = {
     BTC: 'Bitcoin', HYPE: 'HYPE', VVV: 'VVV', SOL: 'Solana', MRNA: 'Moderna', ANT: 'Anthropic',
-    SOXL: 'Direxion SOXL', MU: 'Micron', AMD: 'AMD', AVGO: 'Broadcom', TSM: 'TSMC', SKHYNIX: 'SK Hynix', NVDA: 'NVIDIA'
+    SOXL: 'Direxion SOXL', MU: 'Micron', AMD: 'AMD', AVGO: 'Broadcom', TSM: 'TSMC', SKHYNIX: 'SK Hynix', NVDA: 'NVIDIA',
+    TSLA: 'Tesla', SPCX: 'SpaceX', ASML: 'ASML', AMAT: 'Applied Materials', LRCX: 'Lam Research',
+    SAMSUNG: 'Samsung', SMCI: 'Super Micro', SMH: 'VanEck SMH', SP500: 'S&P 500', XYZ100: 'XYZ 100'
   };
   const CRYPTO = { BTC: 1, HYPE: 1, VVV: 1, SOL: 1 };
 
@@ -40,7 +43,17 @@
     { id: 'SKHYNIX', name: 'SKHYNIX', aster: { symbol: 'SKHYNIXUSD1', max: 20, fallback: 815.85 }, hl: { coin: 'xyz:SKHX', max: 10, fallback: 815.85, dex: 'xyz' } },
     { id: 'SOXL', name: 'SOXL', aster: { symbol: 'SOXLUSDT', max: 50, fallback: 36.39 }, hl: { coin: 'xyz:SOXL', max: 10, fallback: 36.39, dex: 'xyz' } },
     { id: 'MRNA', name: 'MRNA', aster: { symbol: 'MRNAUSDT', max: 20, fallback: 200.77 }, hl: { coin: 'xyz:MRNA', max: 10, fallback: 200.77, dex: 'xyz' } },
-    { id: 'ANT', name: 'ANT', aster: { symbol: 'ANTUSDT', max: 20, fallback: 92.72 }, hl: { coin: 'xyz:ANT', max: 10, fallback: 92.72, dex: 'xyz' } }
+    { id: 'ANT', name: 'ANT', aster: { symbol: 'ANTUSDT', max: 20, fallback: 89.32 }, hl: { coin: 'xyz:ANT', max: 10, fallback: 89.19, dex: 'xyz' } },
+    { id: 'TSLA', name: 'TSLA', aster: { symbol: 'TSLAUSDT', max: 50, fallback: 363.38 }, hl: { coin: 'xyz:TSLA', max: 20, fallback: 362.82, dex: 'xyz' } },
+    { id: 'SPCX', name: 'SPCX', aster: { symbol: 'SPCXUSDT', max: 50, fallback: 131.98 }, hl: { coin: 'xyz:SPCX', max: 20, fallback: 131.83, dex: 'xyz' } },
+    { id: 'ASML', name: 'ASML', aster: { symbol: 'ASMLUSDT', max: 20, fallback: 1347.37 }, hl: { coin: 'xyz:ASML', max: 10, fallback: 1345.7, dex: 'xyz' } },
+    { id: 'AMAT', name: 'AMAT', aster: { symbol: 'AMATUSDT', max: 20, fallback: 322.86 }, hl: { coin: 'xyz:AMAT', max: 10, fallback: 322.17, dex: 'xyz' } },
+    { id: 'LRCX', name: 'LRCX', hl: { coin: 'xyz:LRCX', max: 10, fallback: 196.59, dex: 'xyz' } },
+    { id: 'SAMSUNG', name: 'SAMSUNG', aster: { symbol: 'SAMSUNGUSDT', max: 50, fallback: 133.06 }, hl: { coin: 'xyz:SMSN', max: 10, fallback: 133.04, dex: 'xyz' } },
+    { id: 'SMCI', name: 'SMCI', hl: { coin: 'xyz:SMCI', max: 10, fallback: 24.37, dex: 'xyz' } },
+    { id: 'SMH', name: 'SMH', hl: { coin: 'xyz:SMH', max: 20, fallback: 424.66, dex: 'xyz' } },
+    { id: 'SP500', name: 'SP500', hl: { coin: 'xyz:SP500', max: 50, fallback: 7101.8, dex: 'xyz' } },
+    { id: 'XYZ100', name: 'XYZ100', hl: { coin: 'xyz:XYZ100', max: 30, fallback: 25945, dex: 'xyz' } }
   ];
   const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
 
@@ -57,7 +70,12 @@
     TSM: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
     SKHYNIX: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
     SOL: [{min:76,max:100,cap:50000},{min:51,max:75,cap:400000},{min:26,max:50,cap:1000000},{min:21,max:25,cap:4000000},{min:16,max:20,cap:8000000},{min:11,max:15,cap:20000000},{min:9,max:10,cap:40000000},{min:7,max:8,cap:50000000},{min:6,max:6,cap:60000000},{min:5,max:5,cap:80000000},{min:4,max:4,cap:100000000},{min:3,max:3,cap:150000000},{min:2,max:2,cap:200000000},{min:1,max:1,cap:400000000}],
-    NVDA: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}]
+    NVDA: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+    TSLA: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+    SPCX: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+    ASML: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+    AMAT: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
+    SAMSUNG: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}]
   };
   const HL_TIERS_FALLBACK = {
     BTC: [{lower:0,maxLev:40},{lower:150000000,maxLev:20}],
@@ -66,7 +84,11 @@
     VVV: [{lower:0,maxLev:3}],
     MRNA: [{lower:0,maxLev:10}], ANT: [{lower:0,maxLev:10}], SOXL: [{lower:0,maxLev:10}],
     MU: [{lower:0,maxLev:10}], AMD: [{lower:0,maxLev:10}], AVGO: [{lower:0,maxLev:10}],
-    TSM: [{lower:0,maxLev:10}], SKHYNIX: [{lower:0,maxLev:10}], NVDA: [{lower:0,maxLev:10}]
+    TSM: [{lower:0,maxLev:10}], SKHYNIX: [{lower:0,maxLev:10}], NVDA: [{lower:0,maxLev:10}],
+    TSLA: [{lower:0,maxLev:20}], SPCX: [{lower:0,maxLev:20}], ASML: [{lower:0,maxLev:10}],
+    AMAT: [{lower:0,maxLev:10}], LRCX: [{lower:0,maxLev:10}], SAMSUNG: [{lower:0,maxLev:10}],
+    SMCI: [{lower:0,maxLev:10}], SMH: [{lower:0,maxLev:20}], SP500: [{lower:0,maxLev:50}],
+    XYZ100: [{lower:0,maxLev:30}]
   };
 
   let asterBrackets = JSON.parse(JSON.stringify(ASTER_BRACKETS_FALLBACK));
@@ -77,7 +99,13 @@
   let fetchGen = 0;
   let marginFlashTimer = 0;
   let padFresh = true;
+  let marginDraft = null;
   let chart = null, series = null, ws = null, wsCoin = '', wsTf = '', bars = [];
+  let wsKind = '', wsKey = '', lastTickAt = 0, liveRaf = 0, pendingTick = null, wsRetry = 0;
+  let drawTool = 'cursor', drawColor = '#3b8aff', drawings = {}, selectedDraw = null;
+  let measure = null, crosshair = null, longPressTimer = 0, chartPanOff = false;
+  const DRAW_KEY = 'td-calc-draw-v1';
+  const DRAW_COLORS = ['#3b8aff', '#86e8a8', '#f6465d', '#fbbf24', '#ffffff', '#c084fc'];
   const focused = new Set();
 
   const state = {
@@ -406,6 +434,10 @@
         book.pending = Array.isArray(b.pending) ? b.pending : [];
         book.history = Array.isArray(b.history) ? b.history : [];
         book.seq = +b.seq || book.positions.length + 1;
+        if (Math.abs(book.balance - OLD_START_BAL) < 0.005) {
+          book.balance = START_BAL;
+          try { localStorage.setItem(PAPER_KEY, JSON.stringify(book)); } catch (err) { /* */ }
+        }
       }
     } catch (e) { /* */ }
     state.lev = clampLev(state.lev);
@@ -446,12 +478,14 @@
       const prev = parseFloat(ctx && ctx.prevDayPx);
       const fund = parseFloat(ctx && ctx.funding);
       const oi = parseFloat(ctx && ctx.openInterest);
+      const vol = parseFloat(ctx && (ctx.dayNtlVlm || ctx.dayNtlVlM));
       const row = {
         px: px > 0 ? px : null,
         max: u.maxLeverage,
         prevDay: prev > 0 ? prev : null,
         funding: isFinite(fund) ? fund : null,
-        oi: oi > 0 ? oi : null
+        oi: oi > 0 ? oi : null,
+        volume: vol > 0 ? vol : null
       };
       const key = dex ? (dex + ':' + u.name) : u.name;
       out[key] = row;
@@ -549,7 +583,11 @@
         const pct = parseFloat(row.priceChangePercent);
         if (isFinite(pct)) dayChange[c.id] = pct;
         const last = parseFloat(row.lastPrice);
-        if (last > 0) liveMeta[c.id] = Object.assign({}, liveMeta[c.id], { px: last });
+        const vol = parseFloat(row.quoteVolume || row.volume);
+        const patch = {};
+        if (last > 0) patch.px = last;
+        if (vol > 0) patch.volume = vol;
+        if (Object.keys(patch).length) liveMeta[c.id] = Object.assign({}, liveMeta[c.id], patch);
       });
     } catch (e) { /* keep last */ }
   }
@@ -591,6 +629,7 @@
       } catch (e) { /* */ }
       return null;
     }
+    if (!c.aster || !c.aster.symbol) return null;
     const got = await fetchAsterPrice(c.aster.symbol);
     if (got && got.px > 0) {
       liveMeta[c.id] = Object.assign({}, liveMeta[c.id], got);
@@ -617,9 +656,10 @@
       if (fillEntry && fallback > 0) state.entry = fallback;
       if (!quiet) toast('No price from ' + platformName() + ', using last known');
     }
-    saveCalc();
+    if (!quiet) saveCalc();
     tickBook();
     renderAll();
+    renderLiveSrc();
   }
 
   async function refreshDayChange() {
@@ -636,8 +676,8 @@
 
   function setView(name) {
     state.view = name;
-    ['markets', 'asset', 'positions'].forEach((v) => {
-      const map = { markets: 'screenMarkets', asset: 'screenAsset', positions: 'screenPos' };
+    ['markets', 'asset', 'positions', 'calc'].forEach((v) => {
+      const map = { markets: 'screenMarkets', asset: 'screenAsset', positions: 'screenPos', calc: 'screenCalc' };
       const el = $(map[v]);
       if (el) el.classList.toggle('on', v === name);
     });
@@ -655,12 +695,14 @@
     const coin = COIN_BY_ID[id];
     if (!coin || !coinAvailable(coin)) { toast('Not on ' + platformName()); return; }
     state.coin = coin.id;
+    state.livePrice = null;
+    lastTickAt = 0;
     state.lev = clampLev(state.lev);
     clampMarginToLimit({ flash: false });
     saveCalc();
     setView('asset');
     renderAll();
-    refreshPrice({ fillEntry: !state.entry, quiet: true });
+    refreshPrice({ fillEntry: true, quiet: true });
     loadChart();
   }
 
@@ -680,6 +722,8 @@
     renderAll();
     refreshPrice({ fillEntry: true, quiet: true });
     refreshDayChange();
+    subscribeLive();
+    if (state.view === 'asset') loadChart();
   }
 
   /* ——— paper engine ——— */
@@ -803,10 +847,10 @@
   }
 
   function resetAccount() {
-    if (!confirm('Reset the paper account to $1,000,000? Positions and orders will be cleared.')) return;
+    if (!confirm('Reset the paper account to $30,000? Positions and orders will be cleared.')) return;
     book = { balance: START_BAL, positions: [], pending: [], history: [], seq: 1 };
     savePaper();
-    toast('Account reset to $1,000,000');
+    toast('Account reset to $30,000');
     renderAll();
     renderOverlay();
   }
@@ -847,7 +891,6 @@
     const host = $('chart');
     if (!host) return;
     const c = currentCoin();
-    const coin = c.hl && c.hl.coin;
     if (!window.LightweightCharts) {
       host.innerHTML = '<div style="padding:20px;color:#8a8a8a">Chart library failed to load.</div>';
       return;
@@ -859,66 +902,20 @@
     host.innerHTML = '';
     chart = LightweightCharts.createChart(host, Object.assign({ width: host.clientWidth, height: host.clientHeight }, chartOptions()));
     series = chart.addCandlestickSeries(candleStyle());
-    chart.timeScale().subscribeVisibleLogicalRangeChange(function () { renderOverlay(); });
-    const end = Date.now();
-    const span = TF_LOOKBACK_MS[state.tf] || 12 * 3600e3;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(function () { renderOverlay(); renderDrawings(); });
+    bars = [];
     try {
-      const raw = await hlInfo({ type: 'candleSnapshot', req: { coin: coin, interval: state.tf, startTime: end - span, endTime: end } });
-      bars = (raw || []).map(parseBar).filter((b) => b.time && b.close > 0);
-      bars.sort((a, b) => a.time - b.time);
-      const seen = {};
-      bars = bars.filter((b) => { if (seen[b.time]) return false; seen[b.time] = 1; return true; });
+      if (useAsterChart(c)) bars = await fetchAsterKlines(c.aster.symbol, state.tf);
+      else bars = await fetchHlKlines(c.hl && c.hl.coin, state.tf);
       series.setData(bars);
       chart.timeScale().fitContent();
     } catch (e) {
       bars = [];
     }
-    subscribeCandles(coin, state.tf);
+    subscribeLive();
     renderOverlay();
-  }
-  function subscribeCandles(coin, tf) {
-    if (ws && (wsCoin !== coin || wsTf !== tf)) {
-      try { ws.close(); } catch (e) { /* */ }
-      ws = null;
-    }
-    wsCoin = coin; wsTf = tf;
-    if (ws && ws.readyState === 1) return;
-    try {
-      ws = new WebSocket(HL_WS);
-      ws.onopen = function () {
-        ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'candle', coin: coin, interval: tf } }));
-      };
-      ws.onmessage = function (ev) {
-        try {
-          const msg = JSON.parse(ev.data);
-          const d = msg.data || (msg.channel === 'candle' && msg.data);
-          if (!d || !d.s && !d.T && !d.t) {
-            if (msg.data && (msg.data.t || msg.data.T)) applyLiveBar(msg.data);
-            return;
-          }
-          applyLiveBar(d);
-        } catch (e) { /* */ }
-      };
-      ws.onclose = function () { ws = null; };
-    } catch (e) { ws = null; }
-  }
-  function applyLiveBar(row) {
-    const bar = parseBar(row);
-    if (!bar.time || !(bar.close > 0) || !series) return;
-    const last = bars[bars.length - 1];
-    if (!last || bar.time > last.time) bars.push(bar);
-    else if (bar.time === last.time) bars[bars.length - 1] = bar;
-    else return;
-    series.update(bar);
-    if (isHl() || !state.livePrice) {
-      state.livePrice = bar.close;
-      liveMeta[state.coin] = Object.assign({}, liveMeta[state.coin], { px: bar.close });
-    }
-    tickBook();
-    renderAssetHead();
-    renderAccount();
-    renderOverlay();
-    if (!$('orderSheet').hidden) renderOrder();
+    renderDrawings();
+    renderLiveSrc();
   }
 
   function yAt(price) {
@@ -1073,8 +1070,18 @@
       if ($('limitPx') && state.limitPx > 0) $('limitPx').value = copyPrice(state.limitPx);
       else if ($('limitPx') && plannedEntry() > 0) $('limitPx').value = copyPrice(plannedEntry());
     }
-    if ($('amtUsd')) $('amtUsd').textContent = fmtUsd(state.margin);
-    if ($('amtCoin')) { const q = qty(); $('amtCoin').textContent = '= ' + (q > 0 ? trimFixed(q, q >= 1 ? 4 : 6) : '0') + ' ' + c.name; }
+    const amtInput = $('amtInput');
+    if (amtInput && !focused.has(amtInput) && marginDraft == null) {
+      amtInput.value = isFinite(state.margin) ? trimFixed(state.margin, 2) : '';
+    } else if (amtInput && marginDraft != null && !focused.has(amtInput)) {
+      amtInput.value = marginDraft;
+    }
+    const posNotional = (state.margin || 0) * state.lev;
+    if ($('amtSub')) {
+      const q = qty();
+      const qtyBit = q > 0 ? ' · ' + trimFixed(q, q >= 1 ? 4 : 6) + ' ' + c.name : '';
+      $('amtSub').textContent = 'Margin ' + fmtUsd(state.margin || 0) + ' · Position ' + fmtUsd(posNotional) + qtyBit;
+    }
     if ($('amtBox')) $('amtBox').classList.toggle('on', !!state.amountOn);
     const max = levMax();
     const range = $('levRange');
@@ -1100,9 +1107,23 @@
     const slExit = state.sl == null ? NaN : exitFromRoi(state.sl);
     const alert = $('liqAlert');
     if (alert) alert.hidden = !slBeyondLiq(slExit, liq);
+    const hasTpsl = state.tp != null || state.sl != null;
     if ($('tpslPanel')) $('tpslPanel').hidden = !state.showTpsl;
     if ($('sizeTools')) $('sizeTools').hidden = !!state.showTpsl;
-    if ($('btnAddTpsl')) $('btnAddTpsl').textContent = state.showTpsl ? 'TP / SL on' : 'Add TP/SL +';
+    if ($('btnAddTpsl')) {
+      $('btnAddTpsl').hidden = !!(state.showTpsl || hasTpsl);
+      $('btnAddTpsl').textContent = hasTpsl ? 'Edit TP/SL' : 'Add TP/SL +';
+    }
+    const sum = $('tpslSum');
+    if (sum) {
+      sum.hidden = !(!state.showTpsl && hasTpsl);
+      if (!sum.hidden) {
+        const parts = [];
+        if (state.tp != null) parts.push('TP ' + fmtUsd(pnlAt(exitFromRoi(state.tp)), true) + ' (' + trimFixed(state.tp, 2) + '%)');
+        if (state.sl != null) parts.push('SL ' + fmtUsd(pnlAt(exitFromRoi(state.sl)), true) + ' (' + trimFixed(state.sl, 2) + '%)');
+        sum.textContent = parts.join(' · ') || 'TP / SL';
+      }
+    }
     renderTpslFields();
     if ($('availBal')) $('availBal').textContent = fmtUsd(freeMargin());
     const go = $('btnSubmit');
@@ -1139,6 +1160,9 @@
     renderPositions();
     if (!$('orderSheet').hidden) renderOrder();
     renderOverlay();
+    renderDrawings();
+    renderAbout();
+    renderLiveSrc();
   }
 
   function openOrder(side) {
@@ -1184,32 +1208,60 @@
     renderOrder();
   }
 
-  function setMarginRaw(s) {
-    const n = parseNum(s);
-    if (!isFinite(n) || n < 0) return;
+  function commitMargin(n, { flash } = {}) {
+    if (!isFinite(n) || n < 0) n = 0;
     state.margin = n;
-    const cap = marginCap();
     const lim = sizeLimit();
+    const free = freeMargin();
     if (lim.available && !lim.uncapped && n > lim.maxMargin + 1e-9) {
       state.margin = lim.maxMargin;
-      flashMarginMax('Max ' + fmtMaxMargin(lim.maxMargin) + ' at ' + state.lev + 'x');
-    } else if (n > freeMargin() + 1e-9) {
-      state.margin = Math.max(0, Math.floor(freeMargin() * 100) / 100);
-      flashMarginMax('Max available ' + fmtUsd(state.margin));
+      if (flash) flashMarginMax('Max ' + fmtMaxMargin(lim.maxMargin) + ' at ' + state.lev + 'x');
+    } else if (n > free + 1e-9) {
+      state.margin = Math.max(0, Math.floor(free * 100) / 100);
+      if (flash) flashMarginMax('Max available ' + fmtUsd(state.margin));
     }
+    marginDraft = null;
     saveCalc();
+  }
+
+  function setMarginRaw(s, { commit } = {}) {
+    const raw = String(s == null ? '' : s);
+    const n = parseNum(raw);
+    if (raw === '' || raw === '.' || raw === '0.') {
+      marginDraft = raw;
+      state.margin = 0;
+      if (commit) commitMargin(0, { flash: false });
+      else renderOrder();
+      return;
+    }
+    if (!isFinite(n) || n < 0) return;
+    if (commit) {
+      commitMargin(n, { flash: true });
+      renderOrder();
+      return;
+    }
+    marginDraft = raw;
+    state.margin = n;
     renderOrder();
   }
 
   function padKey(k) {
-    if (!state.amountOn) state.amountOn = true;
-    let v = padFresh ? '' : String(state.margin || '');
+    state.amountOn = true;
+    state.showTpsl = false;
+    let v = padFresh ? '' : (marginDraft != null ? marginDraft : String(state.margin || ''));
     padFresh = false;
     if (k === 'del') v = v.slice(0, -1);
     else if (k === '.') { if (v.indexOf('.') < 0) v = (v || '0') + '.'; }
     else v += k;
-    if (v === '' || v === '.') { state.margin = v === '.' ? 0 : 0; $('amtUsd').textContent = v === '' ? '$0' : '$.'; return; }
-    setMarginRaw(v);
+    if (v === '' || v === '.') {
+      marginDraft = v;
+      state.margin = 0;
+      if ($('amtInput')) $('amtInput').value = v === '.' ? '0.' : '';
+      if ($('amtSub')) $('amtSub').textContent = 'Margin $0.00 · Position $0.00';
+      return;
+    }
+    setMarginRaw(v, { commit: false });
+    if ($('amtInput')) $('amtInput').value = marginDraft != null ? marginDraft : v;
   }
 
   async function copy(kind) {
@@ -1283,10 +1335,39 @@
       saveCalc();
     }, { live: true });
 
-    $('amtBox').onclick = () => { state.amountOn = !state.amountOn; padFresh = true; renderOrder(); };
+    function revealAmountPad() {
+      state.amountOn = true;
+      state.showTpsl = false;
+      padFresh = true;
+      renderOrder();
+    }
+    $('amtBox').addEventListener('click', (ev) => {
+      revealAmountPad();
+      const inp = $('amtInput');
+      if (!inp) return;
+      if (ev.target !== inp) inp.focus();
+      try { inp.select(); } catch (e) { /* */ }
+    });
+    bindInput($('amtInput'), (v) => {
+      setMarginRaw(v, { commit: !focused.has($('amtInput')) });
+    }, { live: true });
+    if ($('amtInput')) {
+      $('amtInput').addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); $('amtInput').blur(); }
+      });
+      const origCommit = $('amtInput').onblur;
+      $('amtInput').addEventListener('focus', () => {
+        state.amountOn = true;
+        state.showTpsl = false;
+        padFresh = true;
+        renderOrder();
+        try { $('amtInput').select(); } catch (e) { /* */ }
+      });
+    }
     $('levRange').addEventListener('input', () => setLev($('levRange').value));
-    $('btnAddTpsl').onclick = () => { state.showTpsl = true; renderOrder(); };
-    $('btnSaveTpsl').onclick = () => { state.showTpsl = false; saveCalc(); renderOrder(); };
+    $('btnAddTpsl').onclick = () => { state.showTpsl = true; state.amountOn = false; renderOrder(); };
+    $('btnSaveTpsl').onclick = () => { state.showTpsl = false; state.amountOn = true; saveCalc(); renderOrder(); };
+    if ($('tpslSum')) $('tpslSum').onclick = () => { state.showTpsl = true; state.amountOn = false; renderOrder(); };
     $('clearTp').onclick = () => { state.tp = null; saveCalc(); renderOrder(); };
     $('clearSl').onclick = () => { state.sl = null; saveCalc(); renderOrder(); };
     bindInput($('tpPrice'), (v) => {
@@ -1348,9 +1429,10 @@
       if (!b) return;
       const pct = +b.getAttribute('data-pct') / 100;
       let cap = marginCap();
-      state.margin = Math.floor(cap * pct * 100) / 100;
+      state.amountOn = true;
+      state.showTpsl = false;
+      commitMargin(Math.floor(cap * pct * 100) / 100, { flash: false });
       padFresh = true;
-      saveCalc();
       renderOrder();
     });
     $('pad').addEventListener('click', (ev) => {
@@ -1393,6 +1475,742 @@
     window.addEventListener('resize', sizeChart);
   }
 
+
+  function useAsterChart(c) {
+    c = c || currentCoin();
+    return !isHl() && !!(c && c.aster && c.aster.symbol);
+  }
+  function wsIsLive() {
+    return !!(ws && ws.readyState === 1 && lastTickAt && (Date.now() - lastTickAt) < 5000);
+  }
+  function renderLiveSrc() {
+    const el = $('liveSrc');
+    const lbl = $('liveSrcLbl');
+    if (!el || !lbl) return;
+    const src = useAsterChart() ? 'Aster' : 'HL';
+    lbl.textContent = src;
+    const age = lastTickAt ? (Date.now() - lastTickAt) : 1e9;
+    const connected = !!(ws && ws.readyState === 1);
+    el.className = 'live-src' + (age < 2500 ? ' on' : connected || age < 8000 ? ' stale' : ' off');
+  }
+
+  async function fetchHlKlines(coin, tf) {
+    if (!coin) return [];
+    const end = Date.now();
+    const span = TF_LOOKBACK_MS[tf] || 12 * 3600e3;
+    const raw = await hlInfo({ type: 'candleSnapshot', req: { coin: coin, interval: tf, startTime: end - span, endTime: end } });
+    const list = (raw || []).map(parseBar).filter((b) => b.time && b.close > 0);
+    list.sort((a, b) => a.time - b.time);
+    const seen = {};
+    return list.filter((b) => { if (seen[b.time]) return false; seen[b.time] = 1; return true; });
+  }
+
+  async function fetchAsterKlines(symbol, tf) {
+    const interval = tf === '1d' ? '1d' : tf;
+    const r = await fetch(ASTER_API + '/klines?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=500', { cache: 'no-store' });
+    if (!r.ok) throw new Error('klines ' + r.status);
+    const raw = await r.json();
+    const list = (Array.isArray(raw) ? raw : []).map((row) => ({
+      time: Math.floor(Number(row[0]) / 1000),
+      open: +row[1], high: +row[2], low: +row[3], close: +row[4]
+    })).filter((b) => b.time && b.close > 0);
+    const seen = {};
+    return list.filter((b) => { if (seen[b.time]) return false; seen[b.time] = 1; return true; });
+  }
+
+  function closeLiveWs() {
+    if (ws) {
+      try { ws.onclose = null; ws.onerror = null; ws.close(); } catch (e) { /* */ }
+      ws = null;
+    }
+  }
+
+  function liveWantKey() {
+    const c = currentCoin();
+    if (useAsterChart(c)) return 'aster:' + c.aster.symbol + ':' + state.tf;
+    return 'hl:' + ((c.hl && c.hl.coin) || '') + ':' + state.tf;
+  }
+
+  function subscribeLive() {
+    const key = liveWantKey();
+    if (ws && wsKey === key && ws.readyState === 1) return;
+    closeLiveWs();
+    wsKey = key;
+    wsCoin = key;
+    wsTf = state.tf;
+    if (key.startsWith('aster:')) openAsterWs();
+    else openHlWs();
+  }
+
+  function wsBackoff() {
+    wsRetry = Math.min(8, (wsRetry || 0) + 1);
+    const ms = Math.min(10000, 600 * Math.pow(2, wsRetry - 1));
+    setTimeout(() => {
+      if (liveWantKey() === wsKey) subscribeLive();
+    }, ms);
+  }
+
+  function openHlWs() {
+    const c = currentCoin();
+    const coin = c.hl && c.hl.coin;
+    if (!coin) return;
+    wsKind = 'hl';
+    try {
+      ws = new WebSocket(HL_WS);
+      ws.onopen = function () {
+        wsRetry = 0;
+        const subs = [
+          { type: 'candle', coin: coin, interval: state.tf },
+          { type: 'allMids' },
+          { type: 'allMids', dex: 'xyz' },
+          { type: 'activeAssetCtx', coin: coin }
+        ];
+        if (c.hl.dex) subs.push({ type: 'activeAssetCtx', coin: coin, dex: c.hl.dex });
+        subs.forEach((subscription) => {
+          try { ws.send(JSON.stringify({ method: 'subscribe', subscription: subscription })); } catch (e) { /* */ }
+        });
+      };
+      ws.onmessage = function (ev) {
+        try { handleHlMessage(JSON.parse(ev.data), coin); } catch (e) { /* */ }
+      };
+      ws.onclose = function () { if (wsKind === 'hl') { ws = null; wsBackoff(); } };
+      ws.onerror = function () { try { ws.close(); } catch (e) { /* */ } };
+    } catch (e) { ws = null; wsBackoff(); }
+  }
+
+  function openAsterWs() {
+    const c = currentCoin();
+    const sym = (c.aster && c.aster.symbol || '').toLowerCase();
+    if (!sym) return;
+    const tf = state.tf === '1d' ? '1d' : state.tf;
+    const streams = '!markPrice@arr@1s/' + sym + '@markPrice@1s/' + sym + '@aggTrade/' + sym + '@kline_' + tf;
+    const url = 'wss://fstream.asterdex.com/stream?streams=' + streams;
+    wsKind = 'aster';
+    try {
+      ws = new WebSocket(url);
+      ws.onopen = function () { wsRetry = 0; };
+      ws.onmessage = function (ev) {
+        try { handleAsterMessage(JSON.parse(ev.data)); } catch (e) { /* */ }
+      };
+      ws.onclose = function () { if (wsKind === 'aster') { ws = null; wsBackoff(); } };
+      ws.onerror = function () { try { ws.close(); } catch (e) { /* */ } };
+    } catch (e) { ws = null; wsBackoff(); }
+  }
+
+  function handleHlMessage(msg, coin) {
+    const ch = msg.channel || msg.type;
+    const d = msg.data;
+    if (!d) return;
+    if (ch === 'candle' || (d.s || d.T || d.t) && (d.o != null && d.c != null)) {
+      if (d.s && coin && d.s !== coin && d.s !== coin.replace(/^xyz:/, '')) {
+        /* maybe still ok */
+      }
+      applyOfficialBar(parseBar(d));
+    }
+    if (ch === 'allMids' || d.mids) {
+      const mids = d.mids || d;
+      applyMids(mids);
+      const px = midForCoin(mids, currentCoin());
+      if (px > 0) applyPriceTick(px);
+    }
+    if (ch === 'activeAssetCtx' || d.ctx || d.coin) {
+      const ctx = d.ctx || d;
+      const px = parseFloat(ctx.markPx || ctx.midPx || ctx.oraclePx);
+      const extra = {};
+      const fund = parseFloat(ctx.funding);
+      const oi = parseFloat(ctx.openInterest);
+      const vol = parseFloat(ctx.dayNtlVlm);
+      if (isFinite(fund)) extra.funding = fund;
+      if (oi > 0) extra.oi = oi;
+      if (vol > 0) extra.volume = vol;
+      if (px > 0) applyPriceTick(px, extra);
+    }
+  }
+
+  function midForCoin(mids, c) {
+    if (!mids || !c || !c.hl) return 0;
+    const raw = c.hl.coin;
+    const short = raw.replace(/^xyz:/, '');
+    const v = mids[raw] || mids[short] || mids['xyz:' + short];
+    const n = parseFloat(v);
+    return n > 0 ? n : 0;
+  }
+
+  function applyMids(mids) {
+    if (!mids) return;
+    COINS.forEach((c) => {
+      const px = midForCoin(mids, c);
+      if (px > 0) liveMeta[c.id] = Object.assign({}, liveMeta[c.id], { px: px });
+    });
+  }
+
+  function handleAsterMessage(msg) {
+    const d = msg.data || msg;
+    if (!d) return;
+    if (Array.isArray(d)) {
+      d.forEach((row) => {
+        if (!row || !row.s) return;
+        const px = parseFloat(row.p);
+        if (!(px > 0)) return;
+        const coin = COINS.find((c) => c.aster && c.aster.symbol === row.s);
+        if (!coin) return;
+        const extra = {};
+        const fund = parseFloat(row.r);
+        if (isFinite(fund)) extra.funding = fund;
+        liveMeta[coin.id] = Object.assign({}, liveMeta[coin.id], { px: px }, extra);
+        if (coin.id === state.coin) applyPriceTick(px, extra);
+      });
+      if (state.view === 'markets' && !liveRaf) liveRaf = requestAnimationFrame(function () { liveRaf = 0; renderMarkets(); renderLiveSrc(); });
+      return;
+    }
+    const type = d.e;
+    if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade')) {
+      const px = parseFloat(d.p || d.markPrice);
+      const extra = {};
+      const fund = parseFloat(d.r);
+      if (isFinite(fund)) extra.funding = fund;
+      if (px > 0) applyPriceTick(px, extra);
+    }
+    if (type === 'aggTrade') {
+      const px = parseFloat(d.p);
+      if (px > 0) applyPriceTick(px);
+    }
+    if (type === 'kline' && d.k) {
+      const k = d.k;
+      applyOfficialBar({
+        time: Math.floor(Number(k.t) / 1000),
+        open: +k.o, high: +k.h, low: +k.l, close: +k.c
+      });
+      const px = parseFloat(k.c);
+      if (px > 0) applyPriceTick(px);
+    }
+  }
+
+  function applyOfficialBar(bar) {
+    if (!bar || !bar.time || !(bar.close > 0) || !series) return;
+    const last = bars[bars.length - 1];
+    if (!last || bar.time > last.time) bars.push(bar);
+    else if (bar.time === last.time) bars[bars.length - 1] = bar;
+    else return;
+    series.update(bars[bars.length - 1]);
+  }
+
+  function applyPriceTick(px, extra) {
+    if (!(px > 0)) return;
+    pendingTick = { px: px, extra: extra || null, t: Date.now() };
+    if (!liveRaf) liveRaf = requestAnimationFrame(flushTick);
+  }
+
+  function flushTick() {
+    liveRaf = 0;
+    const t = pendingTick;
+    if (!t) return;
+    pendingTick = null;
+    lastTickAt = t.t;
+    state.livePrice = t.px;
+    state.priceStatus = 'live';
+    liveMeta[state.coin] = Object.assign({}, liveMeta[state.coin], { px: t.px }, t.extra || {});
+    if (series && bars.length) {
+      const last = bars[bars.length - 1];
+      const bar = {
+        time: last.time,
+        open: last.open,
+        high: Math.max(last.high, t.px),
+        low: Math.min(last.low, t.px),
+        close: t.px
+      };
+      bars[bars.length - 1] = bar;
+      series.update(bar);
+    }
+    tickBook();
+    renderAssetHead();
+    renderOverlay();
+    renderDrawings();
+    renderLiveSrc();
+    if (crosshair) renderCrosshair();
+    if (!$('orderSheet').hidden) {
+      if ($('orderSub')) $('orderSub').textContent = fmtPrice(t.px, true) + ' · ' + platformName() + ' · paper';
+      if ($('estLiq')) renderOrder();
+    }
+    if (state.view === 'markets') renderMarkets();
+  }
+
+  /* ——— about ——— */
+  const ASSET_INFO = {
+    BTC: { blurb: 'Bitcoin is the first and largest cryptocurrency, used as a benchmark for crypto markets.', more: ' BTC perpetual futures let you trade its price with leverage, long or short, without holding the coin.', web: 'https://bitcoin.org' },
+    HYPE: { blurb: 'HYPE is the token of Hyperliquid, a decentralized perpetual futures exchange.', more: ' It is one of the most active perps on both Hyperliquid and Aster.', web: 'https://hyperliquid.xyz', x: 'https://x.com/HyperliquidX' },
+    SOL: { blurb: 'Solana is a high-throughput smart-contract blockchain. SOL is its native token.', more: ' SOL perps are among the most liquid crypto contracts after Bitcoin and Ethereum.', web: 'https://solana.com', x: 'https://x.com/solana' },
+    VVV: { blurb: 'VVV is a perpetual market listed on Aster and Hyperliquid.', more: '' },
+    NVDA: { blurb: 'NVIDIA designs GPUs that power most AI training and inference today. Its earnings often move the whole AI sector.', more: ' Data-center demand for H100/Blackwell chips is the main driver of the stock.', web: 'https://www.nvidia.com', x: 'https://x.com/nvidia' },
+    AMD: { blurb: 'AMD is NVIDIA’s main rival in data-center GPUs and also sells CPUs.', more: ' Its MI-series accelerators are the closest large-scale alternative to NVIDIA in AI clusters.', web: 'https://www.amd.com', x: 'https://x.com/AMD' },
+    MU: { blurb: 'Micron makes DRAM and HBM memory used in AI GPUs. Its reports are an early read on memory demand.', more: ' HBM supply is tight when AI capex is strong, which often lifts Micron with SK Hynix.', web: 'https://www.micron.com', x: 'https://x.com/MicronTech' },
+    AVGO: { blurb: 'Broadcom makes custom AI accelerators for Google and Meta, plus networking silicon for data centers.', more: ' It is a core way to follow AI capex outside of NVIDIA itself.', web: 'https://www.broadcom.com' },
+    TSM: { blurb: 'TSMC manufactures chips for NVIDIA, Apple, AMD and others. Monthly revenue is an early industry signal.', more: ' Almost every leading AI GPU is built on TSMC process nodes.', web: 'https://www.tsmc.com' },
+    SKHYNIX: { blurb: 'SK Hynix is the leading supplier of HBM, the high-bandwidth memory stacked on AI GPUs.', more: ' This contract tracks the pre-IPO / overseas listing used on Aster and Hyperliquid, not the Korean cash equity itself.', web: 'https://www.skhynix.com' },
+    SOXL: { blurb: 'Direxion Daily Semiconductor Bull 3X is a leveraged ETF on semiconductor stocks.', more: ' It is much more volatile than the underlying SOX/SOXX sector and is meant for short-term trading.', web: 'https://www.direxion.com' },
+    MRNA: { blurb: 'Moderna is a biotechnology company known for mRNA vaccines and therapeutics.', more: '', web: 'https://www.modernatx.com', x: 'https://x.com/moderna_tx' },
+    ANT: { blurb: 'Anthropic is an AI research company that builds the Claude models. This is a pre-IPO perpetual, not a listed stock.', more: ' The contract trades on Aster and on Hyperliquid’s xyz dex.', web: 'https://www.anthropic.com', x: 'https://x.com/AnthropicAI' },
+    TSLA: { blurb: 'Tesla makes electric vehicles, energy storage, and is expanding in autonomy and robotics.', more: '', web: 'https://www.tesla.com', x: 'https://x.com/Tesla' },
+    SPCX: { blurb: 'SpaceX is a private space and satellite-internet company. This is a pre-IPO perpetual, not a listed share.', more: ' The contract trades on Aster and on Hyperliquid’s xyz dex.', web: 'https://www.spacex.com', x: 'https://x.com/SpaceX' },
+    ASML: { blurb: 'ASML builds the extreme-ultraviolet lithography machines that leading chipmakers need to make advanced chips.', more: ' Its order book is often read as a one-year-ahead signal for semiconductor capex.', web: 'https://www.asml.com' },
+    AMAT: { blurb: 'Applied Materials supplies equipment used to fabricate semiconductors inside chip plants.', more: ' It sits in the same factory-equipment group as Lam Research and KLA.', web: 'https://www.appliedmaterials.com' },
+    LRCX: { blurb: 'Lam Research makes wafer-fabrication equipment, especially etch and deposition tools used in memory and logic plants.', more: ' Listed as a Hyperliquid xyz perpetual; it is not on Aster yet.', web: 'https://www.lamresearch.com' },
+    SAMSUNG: { blurb: 'Samsung is a major producer of DRAM, NAND and HBM, and also a large contract chip manufacturer.', more: ' On Hyperliquid this contract is xyz:SMSN; on Aster it is SAMSUNGUSDT.', web: 'https://www.samsung.com' },
+    SMCI: { blurb: 'Super Micro builds AI servers and racks. The stock often reacts first when AI hardware hype rises or fades.', more: ' This perpetual is listed on Hyperliquid’s xyz dex and is not on Aster yet.', web: 'https://www.supermicro.com' },
+    SMH: { blurb: 'VanEck Semiconductor ETF (SMH) is a liquid way to trade the chip sector as a group.', more: ' It is the closest SOX/SOXX-style product on Hyperliquid. SOXL, a 3x bull ETF, is also listed. SOXX itself is not on Aster or Hyperliquid.', web: 'https://www.vaneck.com' },
+    SP500: { blurb: 'This contract tracks the S&P 500, the main US large-cap equity index.', more: ' It trades on Hyperliquid as xyz:SP500 (index level, around seven thousand). Aster lists SPY and a meme coin called SPX, not this index, so the market appears only on Hyperliquid.', web: 'https://www.spglobal.com/spdji/en/indices/equity/sp-500/' },
+    XYZ100: { blurb: 'XYZ100 is TradeXYZ’s US 100 index: 100 large non-financial US-listed companies, weighted by modified market cap.', more: ' It trades on Hyperliquid’s xyz dex with up to 30× leverage. It is not a licensed Nasdaq-100 contract and is not listed on Aster.', web: 'https://trade.xyz' }
+  };
+
+  function fundingApr(rate) {
+    if (!isFinite(rate)) return null;
+    const perYear = isHl() ? rate * 24 * 365 : rate * 3 * 365;
+    return perYear * 100;
+  }
+
+  function renderAbout() {
+    const box = $('aboutPanel');
+    if (!box) return;
+    const c = currentCoin();
+    const info = ASSET_INFO[c.id] || {};
+    const meta = liveMeta[c.id] || {};
+    const ticker = c.name;
+    const short = info.blurb || ('Perpetual market for ' + (NAMES[c.id] || c.name) + '.');
+    const more = info.more || '';
+    let chips = '<button type="button" id="copyTicker">Copy $' + ticker + '</button>';
+    chips += '<a href="https://x.com/search?q=' + encodeURIComponent('$' + ticker) + '&src=typed_query" target="_blank" rel="noopener noreferrer">Search on X</a>';
+    if (info.web) chips += '<a href="' + info.web + '" target="_blank" rel="noopener noreferrer">Website</a>';
+    if (info.x) chips += '<a href="' + info.x + '" target="_blank" rel="noopener noreferrer">X account</a>';
+    const fund = meta.funding;
+    const fundTxt = fund == null ? '—' : ((fund * 100).toFixed(4) + '%');
+    const apr = fundingApr(fund);
+    const fundLine = apr == null ? fundTxt : (fundTxt + '  ·  APR ' + (apr >= 0 ? '+' : '') + apr.toFixed(1) + '%');
+    const px = markOf(c.id);
+    const oiUsd = meta.oi > 0 ? fmtUsd(meta.oi * (px || 0)) : '—';
+    const vol = meta.volume > 0 ? fmtUsd(meta.volume) : '—';
+    box.innerHTML = '<h3>Overview</h3>' +
+      '<div class="about-blurb' + (more ? '' : ' open') + '" id="aboutBlurb">' + short +
+      (more ? '<span class="more">' + more + '</span> <button type="button" class="about-more" id="aboutMore">Show more</button>' : '') +
+      '</div>' +
+      '<div class="about-chips">' + chips + '</div>' +
+      '<div class="about-stats">' +
+      '<div class="row"><span class="k">Open interest</span><span class="v">' + oiUsd + '</span></div>' +
+      '<div class="row"><span class="k">24h volume</span><span class="v">' + vol + '</span></div>' +
+      '<div class="row"><span class="k">Funding</span><span class="v">' + fundLine + '</span></div>' +
+      '</div>';
+    const moreBtn = $('aboutMore');
+    if (moreBtn) moreBtn.onclick = function () {
+      const el = $('aboutBlurb');
+      const open = el.classList.toggle('open');
+      moreBtn.textContent = open ? 'Show less' : 'Show more';
+    };
+    const copyBtn = $('copyTicker');
+    if (copyBtn) copyBtn.onclick = async function () {
+      try { await navigator.clipboard.writeText('$' + ticker); toast('Copied $' + ticker); }
+      catch (e) { toast('Could not copy'); }
+    };
+  }
+
+  /* ——— drawings + long-press limit ——— */
+  function loadDrawings() {
+    try { drawings = JSON.parse(localStorage.getItem(DRAW_KEY) || '{}') || {}; }
+    catch (e) { drawings = {}; }
+  }
+  function saveDrawings() {
+    try { localStorage.setItem(DRAW_KEY, JSON.stringify(drawings)); } catch (e) { /* */ }
+  }
+  function coinDraws() {
+    const id = state.coin;
+    if (!Array.isArray(drawings[id])) drawings[id] = [];
+    return drawings[id];
+  }
+  function xAtTime(t) {
+    if (!chart || t == null) return null;
+    const x = chart.timeScale().timeToCoordinate(t);
+    return x == null ? null : x;
+  }
+  function timeAtX(x) {
+    if (!chart) return null;
+    return chart.timeScale().coordinateToTime(x);
+  }
+  function priceAtY(y) {
+    if (!series) return null;
+    const p = series.coordinateToPrice(y);
+    return p > 0 ? p : null;
+  }
+
+  function setChartInteractive(on) {
+    if (!chart) return;
+    chartPanOff = !on;
+    chart.applyOptions({
+      handleScroll: on ? { pinch: true, mouseWheel: true } : false,
+      handleScale: on ? { pinch: true, axisPressedMouseMove: true } : false
+    });
+  }
+
+  function renderDrawings() {
+    const host = $('chartDraw');
+    if (!host) return;
+    const w = host.clientWidth, h = host.clientHeight;
+    if (!(w > 0 && h > 0)) { host.innerHTML = ''; return; }
+    let svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">';
+    coinDraws().forEach((d) => {
+      const col = d.color || '#3b8aff';
+      const thick = selectedDraw === d.id ? 2.4 : 1.4;
+      if (d.type === 'hline') {
+        const y = yAt(d.price);
+        if (y == null) return;
+        svg += '<line x1="0" y1="' + y + '" x2="' + (w - 48) + '" y2="' + y + '" stroke="' + col + '" stroke-width="' + thick + '" stroke-dasharray="4 3"/>';
+      } else if (d.type === 'trend') {
+        const x1 = xAtTime(d.t1), y1 = yAt(d.p1), x2 = xAtTime(d.t2), y2 = yAt(d.p2);
+        if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+        svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + col + '" stroke-width="' + thick + '"/>';
+      }
+    });
+    if (measure && measure.a && measure.b) {
+      const x1 = measure.a.x, y1 = measure.a.y, x2 = measure.b.x, y2 = measure.b.y;
+      const rx = Math.min(x1, x2), ry = Math.min(y1, y2), rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+      svg += '<rect x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" fill="rgba(59,138,255,.16)" stroke="rgba(59,138,255,.75)"/>';
+    }
+    if (crosshair && yAt(crosshair.price) != null) {
+      const y = yAt(crosshair.price);
+      const x = crosshair.x != null ? crosshair.x : (w / 2);
+      svg += '<line x1="0" y1="' + y + '" x2="' + (w - 48) + '" y2="' + y + '" stroke="#fff" stroke-width="1" stroke-dasharray="5 4"/>';
+      svg += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#fff"/>';
+    }
+    svg += '</svg>';
+    let extra = '';
+    if (crosshair && yAt(crosshair.price) != null) {
+      extra += '<div class="xh-lab" style="top:' + yAt(crosshair.price) + 'px">' + fmtPrice(crosshair.price, true) + '</div>';
+    }
+    if (measure && measure.a && measure.b) {
+      const p1 = measure.a.price, p2 = measure.b.price;
+      const dp = p2 - p1;
+      const pct = p1 ? (dp / p1) * 100 : 0;
+      let barsN = 0, dur = '';
+      if (measure.a.time != null && measure.b.time != null) {
+        const dt = Math.abs(measure.b.time - measure.a.time);
+        const step = (bars.length >= 2) ? Math.abs(bars[bars.length - 1].time - bars[bars.length - 2].time) : 60;
+        barsN = step ? Math.round(dt / step) : 0;
+        dur = fmtDuration(dt);
+      }
+      const lab = (dp >= 0 ? '+' : '') + fmtPrice(dp, true) + '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)' +
+        (barsN ? ('  ·  ' + barsN + ' bars') : '') + (dur ? ('  ·  ' + dur) : '');
+      const x = Math.max(8, Math.min(host.clientWidth - 180, (measure.a.x + measure.b.x) / 2));
+      const y = Math.max(8, Math.min(host.clientHeight - 40, (measure.a.y + measure.b.y) / 2));
+      extra += '<div class="meas-lab" style="left:' + x + 'px;top:' + y + 'px">' + lab + '</div>';
+    }
+    host.innerHTML = svg + extra;
+  }
+
+  function fmtDuration(sec) {
+    if (!(sec > 0)) return '';
+    if (sec < 60) return sec + 's';
+    if (sec < 3600) return Math.round(sec / 60) + 'm';
+    if (sec < 86400) {
+      const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+      return h + 'h' + (m ? (' ' + m + 'm') : '');
+    }
+    const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
+    return d + 'd' + (h ? (' ' + h + 'h') : '');
+  }
+
+  function renderCrosshair() {
+    const btn = $('limitOrderBtn');
+    if (!btn) { renderDrawings(); return; }
+    if (!crosshair || !(crosshair.price > 0)) { btn.hidden = true; renderDrawings(); return; }
+    const y = yAt(crosshair.price);
+    const host = $('chartWrap') || $('chart');
+    if (y == null || !host) { btn.hidden = true; renderDrawings(); return; }
+    btn.hidden = false;
+    const top = Math.max(18, Math.min(host.clientHeight - 18, y));
+    const x = Math.max(70, Math.min(host.clientWidth - 120, (crosshair.x || 80) + 16));
+    btn.style.top = top + 'px';
+    btn.style.left = x + 'px';
+    renderDrawings();
+  }
+
+  function clearCrosshair() {
+    crosshair = null;
+    const btn = $('limitOrderBtn');
+    if (btn) btn.hidden = true;
+    if (chartPanOff && drawTool === 'cursor' && !measure) setChartInteractive(true);
+    renderDrawings();
+  }
+
+  function openLimitAt(price) {
+    if (!(price > 0)) return;
+    state.typ = 'limit';
+    state.limitPx = price;
+    saveUi();
+    clearCrosshair();
+    openOrder(state.side || 'long');
+  }
+
+  function localXY(ev, host) {
+    const r = host.getBoundingClientRect();
+    const pt = ev.touches ? ev.touches[0] || ev.changedTouches[0] : ev;
+    return { x: pt.clientX - r.left, y: pt.clientY - r.top };
+  }
+
+  function hitDrawing(x, y) {
+    const list = coinDraws();
+    for (let i = list.length - 1; i >= 0; i--) {
+      const d = list[i];
+      if (d.type === 'hline') {
+        const yy = yAt(d.price);
+        if (yy != null && Math.abs(yy - y) <= 7) return d;
+      } else if (d.type === 'trend') {
+        const x1 = xAtTime(d.t1), y1 = yAt(d.p1), x2 = xAtTime(d.t2), y2 = yAt(d.p2);
+        if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+        if (distToSeg(x, y, x1, y1, x2, y2) <= 7) return d;
+      }
+    }
+    return null;
+  }
+  function distToSeg(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const l2 = dx * dx + dy * dy;
+    if (!l2) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function bindChartUi() {
+    loadDrawings();
+    const colors = $('toolColors');
+    if (colors && !colors.childElementCount) {
+      DRAW_COLORS.forEach((c) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.background = c;
+        b.setAttribute('data-color', c);
+        if (c === drawColor) b.classList.add('on');
+        colors.appendChild(b);
+      });
+    }
+    const toggle = $('toolsToggle');
+    const tools = $('chartTools');
+    if (toggle && tools) {
+      if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) tools.classList.add('collapsed');
+      else tools.classList.remove('collapsed');
+      toggle.onclick = function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        tools.classList.toggle('collapsed');
+      };
+    }
+    if ($('toolList')) $('toolList').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const col = ev.target.closest && ev.target.closest('[data-color]');
+      if (col) {
+        drawColor = col.getAttribute('data-color');
+        $('toolColors').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === col));
+        if (selectedDraw) {
+          const d = coinDraws().find((x) => x.id === selectedDraw);
+          if (d) { d.color = drawColor; saveDrawings(); renderDrawings(); }
+        }
+        return;
+      }
+      const b = ev.target.closest && ev.target.closest('[data-tool]');
+      if (!b) return;
+      const t = b.getAttribute('data-tool');
+      if (t === 'del') {
+        if (selectedDraw) {
+          drawings[state.coin] = coinDraws().filter((d) => d.id !== selectedDraw);
+          selectedDraw = null; saveDrawings(); renderDrawings();
+        }
+        return;
+      }
+      if (t === 'clear') {
+        if (coinDraws().length && confirm('Clear all drawings on ' + state.coin + '?')) {
+          drawings[state.coin] = []; selectedDraw = null; saveDrawings(); renderDrawings();
+        }
+        return;
+      }
+      drawTool = t;
+      $('toolList').querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-tool') === t));
+      pendingTrend = null;
+      if (t === 'cursor') setChartInteractive(true);
+      else setChartInteractive(false);
+    });
+    if ($('limitOrderBtn')) $('limitOrderBtn').onclick = function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (crosshair && crosshair.price > 0) openLimitAt(crosshair.price);
+    };
+
+    const host = $('chartWrap');
+    if (!host) return;
+    let start = null;
+    let moved = false;
+
+    function onDown(ev) {
+      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn'))) return;
+      const pt = localXY(ev, host);
+      start = { x: pt.x, y: pt.y, t: Date.now(), shift: !!(ev.shiftKey && ev.pointerType !== 'touch'), btn: ev.button };
+      moved = false;
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = 0; }
+      const useMeasure = drawTool === 'measure' || (start.shift && ev.button === 0);
+      if (useMeasure) {
+        ev.preventDefault();
+        setChartInteractive(false);
+        const price = priceAtY(pt.y), time = timeAtX(pt.x);
+        measure = { a: { x: pt.x, y: pt.y, price: price, time: time }, b: null };
+        renderDrawings();
+        return;
+      }
+      if (drawTool === 'hline' || drawTool === 'trend') {
+        ev.preventDefault();
+        setChartInteractive(false);
+        return;
+      }
+      longPressTimer = setTimeout(() => {
+        longPressTimer = 0;
+        if (!start || moved) return;
+        const price = priceAtY(start.y);
+        if (!(price > 0)) return;
+        setChartInteractive(false);
+        crosshair = { price: price, x: start.x };
+        renderCrosshair();
+      }, 300);
+    }
+    function onMove(ev) {
+      if (!start) return;
+      const pt = localXY(ev, host);
+      if (Math.hypot(pt.x - start.x, pt.y - start.y) > 8) moved = true;
+      if (measure && measure.a) {
+        ev.preventDefault();
+        measure.b = { x: pt.x, y: pt.y, price: priceAtY(pt.y), time: timeAtX(pt.x) };
+        renderDrawings();
+        return;
+      }
+      if (crosshair) {
+        ev.preventDefault();
+        const price = priceAtY(pt.y);
+        if (price > 0) { crosshair.price = price; crosshair.x = pt.x; renderCrosshair(); }
+        return;
+      }
+      if (drawTool === 'trend' && pendingTrend) {
+        ev.preventDefault();
+        pendingTrend.preview = pt;
+        // preview via temporary measure-like line
+        measure = null;
+        renderDrawings();
+        const hostEl = $('chartDraw');
+        if (hostEl && pendingTrend) {
+          const x1 = pendingTrend.x, y1 = pendingTrend.y, x2 = pt.x, y2 = pt.y;
+          const prev = hostEl.querySelector('svg');
+          if (prev) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+            line.setAttribute('stroke', drawColor); line.setAttribute('stroke-width', '1.4');
+            line.setAttribute('stroke-dasharray', '4 3');
+            prev.appendChild(line);
+          }
+        }
+      }
+    }
+    function onUp(ev) {
+      const pt = localXY(ev, host);
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = 0; }
+      if (measure && measure.a) {
+        measure.b = { x: pt.x, y: pt.y, price: priceAtY(pt.y), time: timeAtX(pt.x) };
+        renderDrawings();
+        start = null;
+        if (drawTool !== 'measure') setChartInteractive(true);
+        return;
+      }
+      if (crosshair) {
+        // keep until next tap outside / limit click
+        start = null;
+        return;
+      }
+      if (drawTool === 'hline' && start && !moved) {
+        const price = priceAtY(pt.y);
+        if (price > 0) {
+          coinDraws().push({ id: 'd' + Date.now(), type: 'hline', price: price, color: drawColor });
+          saveDrawings(); renderDrawings();
+        }
+      } else if (drawTool === 'trend') {
+        const price = priceAtY(pt.y), time = timeAtX(pt.x);
+        if (!pendingTrend) {
+          pendingTrend = { x: pt.x, y: pt.y, price: price, time: time };
+        } else {
+          coinDraws().push({
+            id: 'd' + Date.now(), type: 'trend',
+            t1: pendingTrend.time, p1: pendingTrend.price,
+            t2: time, p2: price, color: drawColor
+          });
+          pendingTrend = null;
+          saveDrawings(); renderDrawings();
+        }
+      } else if (drawTool === 'cursor' && start && !moved) {
+        if (crosshair) clearCrosshair();
+        else if (measure) { measure = null; renderDrawings(); }
+        else {
+          const hit = hitDrawing(pt.x, pt.y);
+          selectedDraw = hit ? hit.id : null;
+          if (hit && hit.color) {
+            drawColor = hit.color;
+            if ($('toolColors')) $('toolColors').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.getAttribute('data-color') === drawColor));
+          }
+          renderDrawings();
+        }
+      }
+      start = null;
+    }
+
+    host.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    host.addEventListener('contextmenu', (ev) => {
+      if (drawTool !== 'cursor' || crosshair) ev.preventDefault();
+    });
+    let pendingTrend = null;
+    window.pendingTrendRef = function () { return pendingTrend; };
+  }
+
+  function onCalcMessage(ev) {
+    const d = ev.data;
+    if (!d || d.type !== 'td-calc-open' || !d.payload) return;
+    applyHandoff(d.payload);
+  }
+  function consumeHandoff() {
+    try {
+      const raw = localStorage.getItem('td-calc-handoff');
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      localStorage.removeItem('td-calc-handoff');
+      if (p && p.v && Date.now() - (p.at || 0) < 60000) applyHandoff(p);
+    } catch (e) { /* */ }
+  }
+  function applyHandoff(p) {
+    if (!p) return;
+    if (p.platform === 'aster' || p.platform === 'hyperliquid') {
+      state.platform = p.platform;
+      state.feePct = state.fees[p.platform];
+    }
+    if (p.coin && COIN_BY_ID[p.coin]) state.coin = p.coin;
+    if (p.side === 'long' || p.side === 'short') state.side = p.side;
+    if (p.margin > 0) state.margin = +p.margin;
+    if (p.lev >= 1) state.lev = clampLev(p.lev);
+    if (p.entry > 0) { state.entry = +p.entry; state.livePrice = state.livePrice || +p.entry; }
+    if (p.typ === 'limit' || p.typ === 'market') state.typ = p.typ;
+    if (p.limit > 0) state.limitPx = +p.limit;
+    if (p.tp > 0 && state.margin > 0) {
+      const roi = pnlAt(p.tp) / state.margin * 100;
+      if (isFinite(roi)) state.tp = roi;
+    }
+    if (p.sl > 0 && state.margin > 0) {
+      const roi = pnlAt(p.sl) / state.margin * 100;
+      if (isFinite(roi)) state.sl = roi;
+    }
+    saveCalc();
+    openOrder(state.side || 'long');
+  }
+
+
   async function init() {
     loadSaved();
     bind();
@@ -1402,10 +2220,15 @@
     refreshAsterBrackets();
     await refreshDayChange();
     await refreshPrice({ fillEntry: !(state.entry > 0), quiet: true });
+    window.addEventListener('message', onCalcMessage);
+    consumeHandoff();
+    bindChartUi();
+    subscribeLive();
+    setInterval(() => { refreshDayChange(); }, 30000);
     setInterval(() => {
-      refreshDayChange();
-      refreshPrice({ quiet: true });
-    }, 20000);
+      if (!wsIsLive()) refreshPrice({ quiet: true });
+      renderLiveSrc();
+    }, 8000);
   }
 
   init().catch((e) => console.error(e));

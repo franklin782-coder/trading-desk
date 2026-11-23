@@ -9,7 +9,7 @@
   <title>Paper Trade · TP/SL</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2386e8a8'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23000000'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="logos/BTC.png" />
-  <link rel="stylesheet" href="app.css?v=20261123e" />
+  <link rel="stylesheet" href="app.css?v=20261123h" />
 </head>
 <body>
   <div class="shell">
@@ -18,7 +18,7 @@
     <section id="screenMarkets" class="screen on">
       <header class="mkt-top">
         <div class="bal-block" id="balBlock">
-          <div class="bal-amt" id="hdrBal">$1,000,000.00</div>
+          <div class="bal-amt" id="hdrBal">$30,000.00</div>
           <div class="bal-pnl" id="hdrPnl">$0.00</div>
         </div>
         <div class="mkt-actions">
@@ -50,14 +50,33 @@
         <div class="asset-pxs">
           <b id="assetPx">—</b>
           <span id="assetChg" class="chg">—</span>
+          <span class="live-src" id="liveSrc"><i class="live-dot"></i><span id="liveSrcLbl">—</span></span>
         </div>
         <button type="button" class="icon-btn" id="btnChartGear" aria-label="Chart lines">☰</button>
       </header>
-      <div class="chart-wrap">
+      <div class="chart-wrap" id="chartWrap">
+        <div id="chartTools" class="chart-tools collapsed">
+          <button type="button" class="tool-btn tool-toggle" id="toolsToggle" aria-label="Drawing tools" title="Tools">✎</button>
+          <div class="tool-list" id="toolList">
+            <button type="button" class="tool-btn on" data-tool="cursor" title="Pan">✥</button>
+            <button type="button" class="tool-btn" data-tool="hline" title="Horizontal line">—</button>
+            <button type="button" class="tool-btn" data-tool="trend" title="Trend line">╱</button>
+            <button type="button" class="tool-btn" data-tool="measure" title="Measure">▣</button>
+            <div class="tool-colors" id="toolColors" role="group" aria-label="Color"></div>
+            <button type="button" class="tool-btn" data-tool="del" title="Delete selected">⌫</button>
+            <button type="button" class="tool-btn" data-tool="clear" title="Clear all">✕</button>
+          </div>
+        </div>
         <div id="chart" class="chart"></div>
         <div id="chartOverlay" class="chart-overlay"></div>
+        <div id="chartDraw" class="chart-draw"></div>
+        <button type="button" class="limit-pill" id="limitOrderBtn" hidden>+ Limit order</button>
       </div>
       <div class="tf-row" id="tfRow"></div>
+      <div class="asset-tabs" id="assetTabs">
+        <button type="button" class="on" data-atab="about">About</button>
+      </div>
+      <div id="aboutPanel" class="about-panel"></div>
       <div id="posCard" class="pos-card" hidden></div>
       <footer class="trade-bar">
         <button type="button" class="btn-long" id="btnLong">Long</button>
@@ -65,11 +84,15 @@
       </footer>
     </section>
 
+    <section id="screenCalc" class="screen">
+      <iframe id="calcFrame" class="calc-frame" title="TP/SL Calculator" src="classic.html?v=20261123h"></iframe>
+    </section>
+
     <!-- Positions -->
     <section id="screenPos" class="screen">
       <header class="pos-top">
         <div class="sec-title">Positions</div>
-        <div class="bal-amt sm" id="posBal">$1,000,000.00</div>
+        <div class="bal-amt sm" id="posBal">$30,000.00</div>
       </header>
       <div id="posList" class="pos-list"></div>
     </section>
@@ -77,6 +100,7 @@
     <nav class="tabbar" id="tabbar" aria-label="App">
       <button type="button" data-view="markets" class="on">Markets</button>
       <button type="button" data-view="asset">Trade</button>
+      <button type="button" data-view="calc">Calc</button>
       <button type="button" data-view="positions">Positions</button>
     </nav>
   </div>
@@ -101,10 +125,13 @@
       <div class="money sm"><span>$</span><input id="limitPx" inputmode="decimal" enterkeyhint="done" aria-label="Limit price" /></div>
     </label>
 
-    <button type="button" class="amt" id="amtBox">
-      <div class="amt-usd" id="amtUsd">$0</div>
-      <div class="amt-coin" id="amtCoin">= 0</div>
-    </button>
+    <div class="amt" id="amtBox">
+      <div class="amt-row">
+        <span class="cur">$</span>
+        <input id="amtInput" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" aria-label="Margin" />
+      </div>
+      <div class="amt-sub" id="amtSub">Margin $0 · Position $0</div>
+    </div>
 
     <label class="lev-block">
       <div class="lev-lab">Leverage <span id="maxHint"></span></div>
@@ -119,6 +146,7 @@
     <div class="liq-alert" id="liqAlert" hidden>Liquidation hits before the stop</div>
 
     <button type="button" class="add-tpsl" id="btnAddTpsl">Add TP/SL +</button>
+    <button type="button" class="tpsl-sum" id="tpslSum" hidden></button>
 
     <div id="tpslPanel" class="tpsl-panel" hidden>
       <div class="block tp">
@@ -148,13 +176,13 @@
       <button type="button" class="save-btn" id="btnSaveTpsl">Save changes</button>
     </div>
 
+    <div class="pcts" id="pcts">
+      <button type="button" data-pct="25">25%</button>
+      <button type="button" data-pct="50">50%</button>
+      <button type="button" data-pct="75">75%</button>
+      <button type="button" data-pct="100">Max</button>
+    </div>
     <div id="sizeTools">
-      <div class="pcts" id="pcts">
-        <button type="button" data-pct="25">25%</button>
-        <button type="button" data-pct="50">50%</button>
-        <button type="button" data-pct="75">75%</button>
-        <button type="button" data-pct="100">Max</button>
-      </div>
       <div class="pad" id="pad">
         <button type="button" data-key="1">1</button><button type="button" data-key="2">2</button><button type="button" data-key="3">3</button>
         <button type="button" data-key="4">4</button><button type="button" data-key="5">5</button><button type="button" data-key="6">6</button>
@@ -199,6 +227,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="app.js?v=20261123e"></script>
+  <script src="app.js?v=20261123h"></script>
 </body>
 </html>
