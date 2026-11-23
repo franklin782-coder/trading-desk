@@ -100,7 +100,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 #screenCalc.on { min-height: calc(100dvh - 58px - var(--safe-b)); overflow: hidden; }
 .calc-frame { flex: 1; width: 100%; border: 0; min-height: calc(100dvh - 58px - var(--safe-b)); background: #0b0b0b; }
-.chart-wrap { position: relative; flex: 0 0 auto; height: 42vh; min-height: 220px; max-height: 460px; background: #000; }
+.chart-wrap { position: relative; flex: 0 0 auto; height: 38vh; min-height: 200px; max-height: 420px; background: #000; overflow: hidden; z-index: 1; }
 .chart { position: absolute; inset: 0; }
 .chart a { display: none !important; }
 .chart-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
@@ -121,13 +121,29 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .tv-pnl.neg { color: var(--red-text); border-color: var(--red); }
 
-.tf-row { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
+.tf-row {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 12px 8px;
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: relative; z-index: 2;
+  background: #000;
+}
 .tf-row::-webkit-scrollbar { display: none; }
 .tf-row button {
-  flex: none; height: 28px; padding: 0 12px; border-radius: 999px;
-  background: #161616; color: var(--muted); font-size: 12px; font-weight: 700;
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 28px; min-width: 36px; padding: 0 12px; border-radius: 999px;
+  background: #161616; color: #8a8a8a;
+  font-size: 12px; font-weight: 700; line-height: 28px;
+  white-space: nowrap; -webkit-text-fill-color: #8a8a8a;
 }
-.tf-row button.on { background: #fff; color: #111; }
+.tf-row button.on {
+  background: #fff; color: #111; -webkit-text-fill-color: #111;
+}
 
 .trade-bar {
   display: flex; gap: 10px; padding: 10px 12px 12px; background: #000; flex: none;
@@ -369,13 +385,21 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
   font-variant-numeric: tabular-nums; white-space: nowrap; z-index: 6; pointer-events: none;
 }
 
-.asset-tabs { display: flex; gap: 8px; padding: 4px 12px 0; }
+.asset-tabs {
+  display: flex; gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 12px 0;
+  margin: 0;
+  position: relative; z-index: 1;
+  background: #000;
+  border-top: 1px solid #141414;
+}
 .asset-tabs button {
   height: 32px; padding: 0 14px; border-radius: 999px;
   background: transparent; color: var(--muted); font-size: 13px; font-weight: 800;
 }
 .asset-tabs button.on { color: #fff; background: var(--card); }
-.about-panel { padding: 10px 16px 20px; }
+.about-panel { padding: 10px 16px 20px; flex: 0 0 auto; position: relative; z-index: 0; }
 .about-panel h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .about-blurb { font-size: 14px; line-height: 1.45; color: #e5e5e5; }
 .about-blurb .more { display: none; }
