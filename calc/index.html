@@ -9,10 +9,37 @@
   <title>Paper Trade · TP/SL</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2386e8a8'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23000000'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="logos/BTC.png" />
-  <link rel="stylesheet" href="app.css?v=20261123i" />
+  <link rel="stylesheet" href="app.css?v=20261123j" />
 </head>
 <body>
   <div class="shell">
+
+    <header class="desk-top" id="deskTop">
+      <div class="desk-brand">
+        <span class="desk-mark" aria-hidden="true">◆</span>
+        <strong>Paper Trade</strong>
+        <span class="desk-sub">demo</span>
+      </div>
+      <nav class="desk-nav" aria-label="Site">
+        <a href="../">Main Desk</a>
+        <a href="../stocks.html">Stocks</a>
+        <a href="./" class="on">Trade</a>
+      </nav>
+      <div class="desk-bal">
+        <div>
+          <div class="desk-bal-lab">Balance</div>
+          <div class="bal-amt sm" id="deskBal">$30,000.00</div>
+        </div>
+        <div>
+          <div class="desk-bal-lab">Unrealized</div>
+          <div class="bal-pnl" id="deskPnl">$0.00</div>
+        </div>
+      </div>
+      <div class="desk-actions">
+        <button type="button" class="pill-btn" id="btnDeskDeposit">Reset</button>
+        <button type="button" class="icon-btn" id="btnDeskGear" aria-label="Settings">⚙</button>
+      </div>
+    </header>
 
     <!-- Markets -->
     <section id="screenMarkets" class="screen on">
@@ -26,6 +53,9 @@
           <button type="button" class="icon-btn" id="btnGear" aria-label="Settings">⚙</button>
         </div>
       </header>
+      <div class="mkt-search-wrap" id="mktSearchWrap">
+        <input id="mktSearch" type="search" placeholder="Search markets" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Search markets" />
+      </div>
       <div class="platforms" role="tablist" aria-label="Platform">
         <button type="button" id="btnAster" class="on">Aster</button>
         <button type="button" id="btnHl">Hyperliquid</button>
@@ -84,31 +114,18 @@
       </footer>
     </section>
 
-    <section id="screenCalc" class="screen">
-      <iframe id="calcFrame" class="calc-frame" title="TP/SL Calculator" src="classic.html?v=20261123i"></iframe>
-    </section>
-
-    <!-- Positions -->
-    <section id="screenPos" class="screen">
-      <header class="pos-top">
-        <div class="sec-title">Positions</div>
-        <div class="bal-amt sm" id="posBal">$30,000.00</div>
-      </header>
-      <div id="posList" class="pos-list"></div>
-    </section>
-
-    <nav class="tabbar" id="tabbar" aria-label="App">
-      <button type="button" data-view="markets" class="on">Markets</button>
-      <button type="button" data-view="asset">Trade</button>
-      <button type="button" data-view="calc">Calc</button>
-      <button type="button" data-view="positions">Positions</button>
-    </nav>
-  </div>
-
-  <!-- Order sheet -->
-  <div id="orderScrim" class="scrim" hidden></div>
-  <aside id="orderSheet" class="sheet" hidden>
+    <aside class="desk-right" id="deskRight">
+      <div class="desk-rtabs" id="deskRightTabs" role="tablist" aria-label="Order panel">
+        <button type="button" data-rtab="trade" class="on">Trade</button>
+        <button type="button" data-rtab="calc">Calc</button>
+      </div>
+      <!-- Order sheet is a mobile bottom sheet; on desktop it stays in this column. -->
+      <aside id="orderSheet" class="sheet" hidden>
     <header class="sheet-head">
+      <div class="side-toggle" id="sideToggle">
+        <button type="button" class="btn-long" id="btnSideLong">Long</button>
+        <button type="button" class="btn-short" id="btnSideShort">Short</button>
+      </div>
       <div>
         <div class="sheet-title" id="orderTitle">Long VVV</div>
         <div class="sheet-sub" id="orderSub">—</div>
@@ -195,7 +212,34 @@
     <p class="err" id="orderErr" hidden></p>
     <button type="button" class="submit long" id="btnSubmit">Long VVV</button>
   </aside>
+      <section id="screenCalc" class="screen">
+        <iframe id="calcFrame" class="calc-frame" title="TP/SL Calculator" src="classic.html?v=20261123j"></iframe>
+      </section>
+    </aside>
 
+    <!-- Positions -->
+    <section id="screenPos" class="screen">
+      <header class="pos-top">
+        <div class="sec-title">Positions</div>
+        <div class="book-tabs" id="bookTabs" role="tablist" aria-label="Book">
+          <button type="button" data-book="positions" class="on">Positions</button>
+          <button type="button" data-book="orders">Open orders</button>
+          <button type="button" data-book="history">History</button>
+        </div>
+        <div class="bal-amt sm" id="posBal">$30,000.00</div>
+      </header>
+      <div id="posList" class="pos-list"></div>
+    </section>
+
+    <nav class="tabbar" id="tabbar" aria-label="App">
+      <button type="button" data-view="markets" class="on">Markets</button>
+      <button type="button" data-view="asset">Trade</button>
+      <button type="button" data-view="calc">Calc</button>
+      <button type="button" data-view="positions">Positions</button>
+    </nav>
+  </div>
+
+  <div id="orderScrim" class="scrim" hidden></div>
   <!-- Iso / type / lines / settings sheets -->
   <div id="miniScrim" class="scrim" hidden></div>
   <div id="isoSheet" class="mini-sheet" hidden>
@@ -227,6 +271,6 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="app.js?v=20261123i"></script>
+  <script src="app.js?v=20261123j"></script>
 </body>
 </html>

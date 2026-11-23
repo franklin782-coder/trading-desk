@@ -129,12 +129,17 @@
     tf: '1m',
     showTpsl: false,
     amountOn: true,
-    chartLines: { entry: true, tp: true, sl: true, liq: true }
+    chartLines: { entry: true, tp: true, sl: true, liq: true },
+    mktQuery: '',
+    bookTab: 'positions',
+    rightTab: 'trade'
   };
 
   let book = { balance: START_BAL, positions: [], pending: [], history: [], seq: 1 };
 
   const $ = (id) => document.getElementById(id);
+  const DESK_MQ = window.matchMedia('(min-width: 1024px)');
+  function isDesktop() { return DESK_MQ.matches; }
 
   function toast(text) {
     const el = $('toast'); if (!el) return;
@@ -676,6 +681,17 @@
 
   function setView(name) {
     state.view = name;
+    if (isDesktop()) {
+      if (name === 'calc') setRightTab('calc');
+      else if (name === 'asset' || name === 'markets') setRightTab('trade');
+      document.querySelectorAll('#tabbar [data-view]').forEach((b) => {
+        b.classList.toggle('on', b.getAttribute('data-view') === name);
+      });
+      requestAnimationFrame(() => { sizeChart(); renderOverlay(); renderDrawings(); });
+      renderPositions();
+      renderAccount();
+      return;
+    }
     ['markets', 'asset', 'positions', 'calc'].forEach((v) => {
       const map = { markets: 'screenMarkets', asset: 'screenAsset', positions: 'screenPos', calc: 'screenCalc' };
       const el = $(map[v]);
@@ -689,6 +705,31 @@
     }
     renderPositions();
     renderAccount();
+  }
+
+  function setRightTab(tab) {
+    state.rightTab = tab === 'calc' ? 'calc' : 'trade';
+    const dock = $('deskRight');
+    if (dock) dock.classList.toggle('calc-on', state.rightTab === 'calc');
+    document.querySelectorAll('#deskRightTabs [data-rtab]').forEach((b) => {
+      b.classList.toggle('on', b.getAttribute('data-rtab') === state.rightTab);
+    });
+    if (isDesktop()) {
+      if ($('orderSheet')) $('orderSheet').hidden = state.rightTab === 'calc';
+      if ($('orderScrim')) $('orderScrim').hidden = true;
+      if (state.rightTab === 'trade') renderOrder();
+    }
+  }
+
+  function setBookTab(tab) {
+    if (tab !== 'positions' && tab !== 'orders' && tab !== 'history') tab = 'positions';
+    state.bookTab = tab;
+    document.querySelectorAll('#bookTabs [data-book]').forEach((b) => {
+      b.classList.toggle('on', b.getAttribute('data-book') === tab);
+    });
+    const title = $('screenPos') && $('screenPos').querySelector('.sec-title');
+    if (title) title.textContent = tab === 'orders' ? 'Open orders' : tab === 'history' ? 'History' : 'Positions';
+    renderPositions();
   }
 
   function openCoin(id) {
@@ -723,7 +764,7 @@
     refreshPrice({ fillEntry: true, quiet: true });
     refreshDayChange();
     subscribeLive();
-    if (state.view === 'asset') loadChart();
+    if (state.view === 'asset' || isDesktop()) loadChart();
   }
 
   /* ——— paper engine ——— */
@@ -960,23 +1001,32 @@
       el.textContent = val;
       if (cls != null) el.className = cls;
     };
+    const pnlCls = 'bal-pnl' + (upnl > 0 ? ' up' : upnl < 0 ? ' dn' : '');
     set('hdrBal', fmtUsd(book.balance));
-    set('hdrPnl', fmtUsd(upnl, true), 'bal-pnl' + (upnl > 0 ? ' up' : upnl < 0 ? ' dn' : ''));
+    set('hdrPnl', fmtUsd(upnl, true), pnlCls);
+    set('deskBal', fmtUsd(book.balance));
+    set('deskPnl', fmtUsd(upnl, true), pnlCls);
     set('posBal', fmtUsd(eq));
     set('availBal', fmtUsd(freeMargin()));
   }
 
   function renderMarkets() {
     const list = $('mktList'); if (!list) return;
+    const q = (state.mktQuery || '').trim().toLowerCase();
     let html = '';
     COINS.forEach((c) => {
       if (state.filter === 'crypto' && kindOf(c) !== 'crypto') return;
       if (state.filter === 'stock' && kindOf(c) === 'crypto') return;
       if (!coinAvailable(c)) return;
+      if (q) {
+        const blob = (c.name + ' ' + (NAMES[c.id] || '') + ' ' + c.id).toLowerCase();
+        if (blob.indexOf(q) < 0) return;
+      }
       const px = markOf(c.id);
       const chg = dayChange[c.id];
       const max = (coinSpec(c) && coinSpec(c).max) || '';
-      html += '<button type="button" class="mkt-row" data-coin="' + c.id + '">' +
+      const on = c.id === state.coin ? ' on' : '';
+      html += '<button type="button" class="mkt-row' + on + '" data-coin="' + c.id + '">' +
         '<img class="logo" src="' + logoSrc(c.id) + '" alt="">' +
         '<div class="mkt-id"><b>' + c.name + '</b><span>' + (NAMES[c.id] || c.name) + '</span></div>' +
         '<span class="lev-badge">' + max + 'x</span>' +
@@ -1011,10 +1061,10 @@
       '<div class="pos-grid">' +
       '<div><span>Size</span><b>' + trimFixed(p.qty, 6) + '</b></div>' +
       '<div><span>Entry</span><b>' + fmtPrice(p.entry, true) + '</b></div>' +
-      '<div><span>Mark</span><b>' + fmtPrice(markOf(p.coin), true) + '</b></div>' +
+      '<div><span>Mark</span><b data-mark="' + p.coin + '">' + fmtPrice(markOf(p.coin), true) + '</b></div>' +
       '<div><span>Liq</span><b>' + (p.liq ? fmtPrice(p.liq, true) : '—') + '</b></div>' +
       '<div><span>TP / SL</span><b>' + (p.tp ? fmtPrice(p.tp) : '—') + ' / ' + (p.sl ? fmtPrice(p.sl) : '—') + '</b></div>' +
-      '<div><span>PnL</span><b class="' + chgClass(u) + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) + '</b></div>' +
+      '<div><span>PnL</span><b class="' + chgClass(u) + '" data-pnl="' + p.id + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) + '</b></div>' +
       '</div>' +
       '<button type="button" class="pos-close" data-close="' + p.id + '">Close position</button></div>';
   }
@@ -1027,9 +1077,67 @@
     el.innerHTML = list.map((p) => posHtml(p)).join('');
   }
 
+  function reasonLabel(r) {
+    return r === 'tp' ? 'Take profit' : r === 'sl' ? 'Stop loss' : r === 'liq' ? 'Liquidated' : r === 'limit' ? 'Limit' : 'Closed';
+  }
+  function fmtTime(t) {
+    if (!t) return '—';
+    try {
+      return new Date(t).toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return new Date(t).toLocaleString();
+    }
+  }
+  function renderBookTable() {
+    const el = $('posList'); if (!el) return;
+    const tab = state.bookTab || 'positions';
+    document.querySelectorAll('#bookTabs [data-book]').forEach((b) => {
+      b.classList.toggle('on', b.getAttribute('data-book') === tab);
+    });
+    const title = $('screenPos') && $('screenPos').querySelector('.sec-title');
+    if (title) title.textContent = tab === 'orders' ? 'Open orders' : tab === 'history' ? 'History' : 'Positions';
+    if (tab === 'orders') {
+      const pend = book.pending || [];
+      if (!pend.length) { el.innerHTML = '<div class="pos-empty">No open orders</div>'; return; }
+      el.innerHTML = '<table class="book-table"><thead><tr><th>Side</th><th>Market</th><th class="num">Limit</th><th class="num">Margin</th><th>Lev</th><th></th></tr></thead><tbody>' +
+        pend.map((o) =>
+          '<tr data-open="' + o.coin + '"><td class="side ' + o.side + '">' + o.side.toUpperCase() + '</td><td><b>' + o.coin + '</b></td>' +
+          '<td class="num">' + fmtPrice(o.entry, true) + '</td><td class="num">' + fmtUsd(o.margin) + '</td><td>' + o.lev + 'x</td>' +
+          '<td><button type="button" class="pos-close" data-cancel="' + o.id + '">Cancel</button></td></tr>'
+        ).join('') + '</tbody></table>';
+      return;
+    }
+    if (tab === 'history') {
+      const hist = book.history || [];
+      if (!hist.length) { el.innerHTML = '<div class="pos-empty">No history yet</div>'; return; }
+      el.innerHTML = '<table class="book-table"><thead><tr><th>Time</th><th>Side</th><th>Market</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">PnL</th><th>Reason</th></tr></thead><tbody>' +
+        hist.map((h) =>
+          '<tr data-open="' + h.coin + '"><td>' + fmtTime(h.t) + '</td><td class="side ' + h.side + '">' + (h.side || '').toUpperCase() + '</td><td><b>' + h.coin + '</b></td>' +
+          '<td class="num">' + fmtPrice(h.entry, true) + '</td><td class="num">' + fmtPrice(h.exit, true) + '</td>' +
+          '<td class="num ' + chgClass(h.pnl) + '">' + fmtUsd(h.pnl, true) + '</td><td>' + reasonLabel(h.reason) + '</td></tr>'
+        ).join('') + '</tbody></table>';
+      return;
+    }
+    const list = book.positions || [];
+    if (!list.length) { el.innerHTML = '<div class="pos-empty">No open positions</div>'; return; }
+    el.innerHTML = '<table class="book-table"><thead><tr><th>Side</th><th>Market</th><th>Mode</th><th class="num">Size</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Liq</th><th>TP / SL</th><th class="num">PnL</th><th></th></tr></thead><tbody>' +
+      list.map((p) => {
+        const u = posPnl(p), roe = posRoe(p);
+        return '<tr data-open="' + p.coin + '"><td class="side ' + p.side + '">' + p.side.toUpperCase() + '</td><td><b>' + p.coin + '</b></td>' +
+          '<td>' + (p.marginMode || 'isolated') + ' ' + p.lev + 'x</td>' +
+          '<td class="num">' + trimFixed(p.qty, 6) + '</td>' +
+          '<td class="num">' + fmtPrice(p.entry, true) + '</td>' +
+          '<td class="num" data-mark="' + p.coin + '">' + fmtPrice(markOf(p.coin), true) + '</td>' +
+          '<td class="num">' + (p.liq ? fmtPrice(p.liq, true) : '—') + '</td>' +
+          '<td>' + (p.tp ? fmtPrice(p.tp) : '—') + ' / ' + (p.sl ? fmtPrice(p.sl) : '—') + '</td>' +
+          '<td class="num ' + chgClass(u) + '" data-pnl="' + p.id + '">' + fmtUsd(u, true) + ' · ' + fmtPct(roe, true) + '</td>' +
+          '<td><button type="button" class="pos-close" data-close="' + p.id + '">Close</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  }
   function renderPositions() {
     renderPosCard();
     const el = $('posList'); if (!el) return;
+    if (isDesktop()) { renderBookTable(); return; }
     const list = book.positions || [];
     const pend = book.pending || [];
     if (!list.length && !pend.length) {
@@ -1044,6 +1152,28 @@
       ).join('');
     }
     el.innerHTML = html;
+  }
+  function patchLiveUi() {
+    document.querySelectorAll('.mkt-row[data-coin]').forEach((row) => {
+      const id = row.getAttribute('data-coin');
+      const px = markOf(id);
+      const chg = dayChange[id];
+      const b = row.querySelector('.mkt-px b');
+      const c = row.querySelector('.mkt-px .chg, .mkt-px [class*="chg"]');
+      if (b) b.textContent = fmtPrice(px, true);
+      if (c) { c.textContent = fmtChgPct(chg); c.className = chgClass(chg); }
+    });
+    document.querySelectorAll('[data-mark]').forEach((el) => {
+      el.textContent = fmtPrice(markOf(el.getAttribute('data-mark')), true);
+    });
+    document.querySelectorAll('[data-pnl]').forEach((el) => {
+      const p = (book.positions || []).find((x) => x.id === el.getAttribute('data-pnl'));
+      if (!p) return;
+      const u = posPnl(p), roe = posRoe(p);
+      el.textContent = fmtUsd(u, true) + ' · ' + fmtPct(roe, true);
+      el.className = (el.className || '').replace(/\b(chg|up|dn)\b/g, '').trim() + ' ' + chgClass(u);
+    });
+    renderAccount();
   }
 
   function renderTf() {
@@ -1133,6 +1263,8 @@
     }
     if ($('pasteTitle')) $('pasteTitle').textContent = 'Enter on ' + platformName();
     if ($('feePct') && !focused.has($('feePct'))) $('feePct').value = String(state.feePct);
+    if ($('btnSideLong')) $('btnSideLong').classList.toggle('on', state.side === 'long');
+    if ($('btnSideShort')) $('btnSideShort').classList.toggle('on', state.side === 'short');
   }
 
   function renderTpslFields() {
@@ -1158,7 +1290,7 @@
     renderAssetHead();
     renderTf();
     renderPositions();
-    if (!$('orderSheet').hidden) renderOrder();
+    if (!$('orderSheet').hidden || isDesktop()) renderOrder();
     renderOverlay();
     renderDrawings();
     renderAbout();
@@ -1172,12 +1304,22 @@
     state.showTpsl = !!(state.tp != null || state.sl != null);
     if (state.typ === 'limit' && !(state.limitPx > 0)) state.limitPx = plannedEntry();
     clampMarginToLimit({ flash: false });
-    $('orderSheet').hidden = false;
-    $('orderScrim').hidden = false;
+    if (isDesktop()) {
+      setRightTab('trade');
+      $('orderSheet').hidden = false;
+      if ($('orderScrim')) $('orderScrim').hidden = true;
+    } else {
+      $('orderSheet').hidden = false;
+      $('orderScrim').hidden = false;
+    }
     err('');
     renderOrder();
   }
   function closeOrder() {
+    if (isDesktop()) {
+      if ($('orderScrim')) $('orderScrim').hidden = true;
+      return;
+    }
     $('orderSheet').hidden = true;
     $('orderScrim').hidden = true;
   }
@@ -1292,8 +1434,34 @@
     $('btnBack').onclick = () => { setView('markets'); };
     $('btnLong').onclick = () => openOrder('long');
     $('btnShort').onclick = () => openOrder('short');
+    if ($('btnSideLong')) $('btnSideLong').onclick = () => openOrder('long');
+    if ($('btnSideShort')) $('btnSideShort').onclick = () => openOrder('short');
     $('btnOrderClose').onclick = closeOrder;
     $('orderScrim').onclick = closeOrder;
+    if ($('btnDeskDeposit')) $('btnDeskDeposit').onclick = resetAccount;
+    if ($('btnDeskGear')) $('btnDeskGear').onclick = () => openMini('setSheet');
+    if ($('mktSearch')) {
+      $('mktSearch').addEventListener('input', () => {
+        state.mktQuery = $('mktSearch').value || '';
+        renderMarkets();
+      });
+      $('mktSearch').addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') { ev.preventDefault(); $('mktSearch').value = ''; state.mktQuery = ''; renderMarkets(); $('mktSearch').blur(); }
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          const first = document.querySelector('#mktList .mkt-row');
+          if (first) openCoin(first.getAttribute('data-coin'));
+        }
+      });
+    }
+    if ($('deskRightTabs')) $('deskRightTabs').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-rtab]');
+      if (b) setRightTab(b.getAttribute('data-rtab'));
+    });
+    if ($('bookTabs')) $('bookTabs').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-book]');
+      if (b) setBookTab(b.getAttribute('data-book'));
+    });
     $('btnIso').onclick = () => openMini('isoSheet');
     $('btnTyp').onclick = () => openMini('typSheet');
     $('btnChartGear').onclick = () => {
@@ -1353,7 +1521,11 @@
     }, { live: true });
     if ($('amtInput')) {
       $('amtInput').addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') { ev.preventDefault(); $('amtInput').blur(); }
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          $('amtInput').blur();
+          if (isDesktop()) placeOrder();
+        }
       });
       const origCommit = $('amtInput').onblur;
       $('amtInput').addEventListener('focus', () => {
@@ -1472,7 +1644,57 @@
       });
     });
 
-    window.addEventListener('resize', sizeChart);
+    window.addEventListener('resize', () => { syncDesktopLayout(); sizeChart(); });
+    if (DESK_MQ.addEventListener) DESK_MQ.addEventListener('change', syncDesktopLayout);
+    else if (DESK_MQ.addListener) DESK_MQ.addListener(syncDesktopLayout);
+    document.addEventListener('keydown', (ev) => {
+      if (!isDesktop()) return;
+      const tag = ((ev.target && ev.target.tagName) || '').toLowerCase();
+      const typing = tag === 'input' || tag === 'textarea' || (ev.target && ev.target.isContentEditable);
+      if (ev.key === '/' && !typing && !ev.metaKey && !ev.ctrlKey) {
+        ev.preventDefault();
+        if ($('mktSearch')) $('mktSearch').focus();
+        return;
+      }
+      if (ev.key === 'Escape') {
+        closeMinis();
+        clearCrosshair();
+        if (measure) { measure = null; renderDrawings(); }
+        if (typing && ev.target && ev.target.blur) ev.target.blur();
+        return;
+      }
+      if (typing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      if (ev.key === 'l' || ev.key === 'L') openOrder('long');
+      else if (ev.key === 's' || ev.key === 'S') openOrder('short');
+      else if (ev.key === 'c' || ev.key === 'C') setRightTab(state.rightTab === 'calc' ? 'trade' : 'calc');
+    });
+  }
+
+  function syncDesktopLayout() {
+    const desk = isDesktop();
+    document.body.classList.toggle('is-desk', desk);
+    if (desk) {
+      if ($('orderScrim')) $('orderScrim').hidden = true;
+      setRightTab(state.rightTab || 'trade');
+      const tools = $('chartTools');
+      if (tools) tools.classList.remove('collapsed');
+      requestAnimationFrame(() => { sizeChart(); renderOverlay(); renderDrawings(); renderPositions(); });
+      if (!chart) loadChart();
+      else sizeChart();
+    } else {
+      const dock = $('deskRight');
+      if (dock) dock.classList.remove('calc-on');
+      if ($('orderSheet') && state.view !== 'calc') {
+        /* keep sheet closed when returning to the phone layout unless it was mid-ticket */
+        if ($('orderScrim') && $('orderScrim').hidden) $('orderSheet').hidden = true;
+      }
+      const map = { markets: 'screenMarkets', asset: 'screenAsset', positions: 'screenPos', calc: 'screenCalc' };
+      ['markets', 'asset', 'positions', 'calc'].forEach((v) => {
+        const el = $(map[v]);
+        if (el) el.classList.toggle('on', v === state.view);
+      });
+      renderPositions();
+    }
   }
 
 
@@ -1732,7 +1954,7 @@
       if ($('orderSub')) $('orderSub').textContent = fmtPrice(t.px, true) + ' · ' + platformName() + ' · paper';
       if ($('estLiq')) renderOrder();
     }
-    if (state.view === 'markets') renderMarkets();
+    patchLiveUi();
   }
 
   /* ——— about ——— */
@@ -2064,15 +2286,17 @@
         setChartInteractive(false);
         return;
       }
-      longPressTimer = setTimeout(() => {
-        longPressTimer = 0;
-        if (!start || moved) return;
-        const price = priceAtY(start.y);
-        if (!(price > 0)) return;
-        setChartInteractive(false);
-        crosshair = { price: price, x: start.x };
-        renderCrosshair();
-      }, 300);
+      if (!(isDesktop() && ev.pointerType !== 'touch')) {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = 0;
+          if (!start || moved) return;
+          const price = priceAtY(start.y);
+          if (!(price > 0)) return;
+          setChartInteractive(false);
+          crosshair = { price: price, x: start.x };
+          renderCrosshair();
+        }, 300);
+      }
     }
     function onMove(ev) {
       if (!start) return;
@@ -2161,9 +2385,26 @@
       start = null;
     }
 
+    function onHover(ev) {
+      if (!isDesktop() || ev.pointerType === 'touch') return;
+      if (start || measure || drawTool !== 'cursor') return;
+      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn'))) return;
+      const pt = localXY(ev, host);
+      const price = priceAtY(pt.y);
+      if (!(price > 0)) return;
+      crosshair = { price: price, x: pt.x, hover: true };
+      renderCrosshair();
+    }
+    function onLeave(ev) {
+      if (!isDesktop() || ev.pointerType === 'touch') return;
+      if (start) return;
+      if (crosshair && crosshair.hover) clearCrosshair();
+    }
     host.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    host.addEventListener('pointermove', onHover);
+    host.addEventListener('pointerleave', onLeave);
     host.addEventListener('contextmenu', (ev) => {
       if (drawTool !== 'cursor' || crosshair) ev.preventDefault();
     });
@@ -2214,6 +2455,7 @@
   async function init() {
     loadSaved();
     bind();
+    syncDesktopLayout();
     renderTf();
     renderAll();
     document.querySelectorAll('#filters [data-filter]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-filter') === state.filter));
@@ -2223,6 +2465,7 @@
     window.addEventListener('message', onCalcMessage);
     consumeHandoff();
     bindChartUi();
+    if (isDesktop()) loadChart();
     subscribeLive();
     setInterval(() => { refreshDayChange(); }, 30000);
     setInterval(() => {
