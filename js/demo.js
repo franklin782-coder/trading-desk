@@ -535,19 +535,11 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(function () { renderOverlay(pane); });
     root.addEventListener('pointerdown', function () { setActivePane(i); });
     $$('.tf button', root).forEach(function (b) {
-      const pickTf = function (ev) { ev.stopPropagation(); if (ev.cancelable) ev.preventDefault(); setPaneTf(i, b.getAttribute('data-tf')); };
-      b.addEventListener('pointerup', function (ev) { if (ev.button != null && ev.button !== 0) return; pickTf(ev); });
-      b.addEventListener('click', function (ev) { ev.stopPropagation(); /* pointerup already handled on touch */ if (ev.pointerType === 'mouse' || ev.detail === 0) setPaneTf(i, b.getAttribute('data-tf')); });
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); setPaneTf(i, b.getAttribute('data-tf')); });
     });
-    (function bindPaneMarket(btn) {
-      if (!btn) return;
-      // Open on click only. Opening on pointerup leaves a trailing click that
-      // lands on the new sheet and immediately picks/closes a market.
-      btn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        openMarketPicker(i, btn, ev);
-      });
-    })(root.querySelector('.pane-mkt'));
+    root.querySelector('.pane-mkt').addEventListener('click', function (ev) {
+      ev.stopPropagation(); openMarketPicker(i, ev.currentTarget);
+    });
     if (window.DemoDraw && DemoDraw.create) {
       pane.draw = DemoDraw.create({
         getChart: function () { return pane.chart; },
@@ -642,20 +634,6 @@
     Promise.all(panes.map(fillPaneData)).then(function () { sizeAll(); resubscribe(); });
   }
 
-  function useSheetPicker() {
-    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return true;
-    if ('ontouchstart' in window) return true;
-    return (window.innerWidth || 0) <= 1100;
-  }
-  function viewSize() {
-    const vv = window.visualViewport;
-    return {
-      w: (vv && vv.width) || window.innerWidth || document.documentElement.clientWidth || 0,
-      h: (vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 0,
-      ox: (vv && vv.offsetLeft) || 0,
-      oy: (vv && vv.offsetTop) || 0
-    };
-  }
   function closeMarketPicker() {
     const drop = $('#mktPicker');
     if (!drop) return;
@@ -663,28 +641,34 @@
     drop.remove();
   }
   function placeMarketPicker(drop, anchor) {
-    if (!drop || !anchor || drop.classList.contains('mkt-drop-sheet')) return;
+    if (!drop || !anchor) return;
     const r = anchor.getBoundingClientRect();
-    const vs = viewSize();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
     drop.style.position = 'fixed';
     drop.style.right = 'auto';
     drop.style.marginTop = '0';
-    const dw = Math.min(Math.max(drop.offsetWidth || 220, r.width, 220), Math.max(160, vs.w - 16));
+    const dw = Math.min(Math.max(drop.offsetWidth || 220, r.width, 220), Math.max(160, vw - 16));
     drop.style.minWidth = dw + 'px';
-    drop.style.maxWidth = Math.max(160, vs.w - 16) + 'px';
-    const maxH = Math.min(420, Math.max(120, vs.h - 16));
+    drop.style.maxWidth = Math.max(160, vw - 16) + 'px';
+    const maxH = Math.min(420, Math.max(120, vh - 16));
     drop.style.maxHeight = maxH + 'px';
     const dh = Math.min(drop.offsetHeight || maxH, maxH);
-    let left = r.left + vs.ox;
-    if (left + dw > vs.ox + vs.w - 8) left = Math.max(vs.ox + 8, vs.ox + vs.w - dw - 8);
-    if (left < vs.ox + 8) left = vs.ox + 8;
-    let top = r.bottom + 4 + vs.oy;
-    if (top + dh > vs.oy + vs.h - 8 && (r.top + vs.oy - 4 - dh) >= vs.oy + 8) top = r.top + vs.oy - 4 - dh;
-    else if (top + dh > vs.oy + vs.h - 8) top = Math.max(vs.oy + 8, vs.oy + vs.h - dh - 8);
+    let left = r.left;
+    if (left + dw > vw - 8) left = Math.max(8, vw - dw - 8);
+    if (left < 8) left = 8;
+    let top = r.bottom + 4;
+    if (top + dh > vh - 8 && (r.top - 4 - dh) >= 8) top = r.top - 4 - dh;
+    else if (top + dh > vh - 8) top = Math.max(8, vh - dh - 8);
     drop.style.left = left + 'px';
     drop.style.top = top + 'px';
   }
-  function fillMarketList(host, i, drop) {
+  function openMarketPicker(i, anchor) {
+    closeMarketPicker();
+    const drop = document.createElement('div');
+    drop.id = 'mktPicker';
+    drop.className = 'mkt-drop';
+    drop.setAttribute('role', 'listbox');
     M.CATALOG.forEach(function (m) {
       const px = lastPx(m.id), x = L(m.id);
       const chg = x.prevDay > 0 && px ? ((px / x.prevDay) - 1) * 100 : 0;
@@ -696,93 +680,40 @@
         ev.preventDefault();
         ev.stopPropagation();
         if (drop._chosen) return;
-        if (Date.now() - (drop._openedAt || 0) < 400) return;
-        if (drop._openedPtr != null && ev.pointerId === drop._openedPtr) return;
         drop._chosen = true;
         closeMarketPicker();
         setPaneMarket(i, m.id);
       };
       b.addEventListener('pointerup', choose);
       b.addEventListener('click', choose);
-      host.appendChild(b);
+      drop.appendChild(b);
     });
-  }
-  function openMarketPicker(i, anchor, ev) {
-    const already = $('#mktPicker');
-    if (already && already._pane === i) { closeMarketPicker(); return; }
-    closeMarketPicker();
-    const sheet = useSheetPicker();
-    const openedAt = Date.now();
-    const openedPtr = ev && ev.pointerId;
-    const drop = document.createElement('div');
-    drop.id = 'mktPicker';
-    drop._pane = i;
-    drop._openedAt = openedAt;
-    drop._openedPtr = openedPtr;
-    drop.setAttribute('role', sheet ? 'dialog' : 'listbox');
-    drop.setAttribute('aria-label', 'Select market');
-    if (sheet) {
-      drop.className = 'mkt-drop mkt-drop-sheet';
-      const backdrop = document.createElement('div');
-      backdrop.className = 'mkt-drop-backdrop';
-      const panel = document.createElement('div');
-      panel.className = 'mkt-drop-panel';
-      const title = document.createElement('div');
-      title.className = 'mkt-drop-title';
-      title.textContent = 'Select market';
-      panel.appendChild(title);
-      fillMarketList(panel, i, drop);
-      drop.appendChild(backdrop);
-      drop.appendChild(panel);
-      const dismiss = function (e) {
-        if (Date.now() - openedAt < 400) return;
-        if (e && openedPtr != null && e.pointerId === openedPtr) return;
-        closeMarketPicker();
-      };
-      backdrop.addEventListener('pointerup', dismiss);
-      backdrop.addEventListener('click', dismiss);
-    } else {
-      drop.className = 'mkt-drop';
-      fillMarketList(drop, i, drop);
-    }
     document.body.appendChild(drop);
-    if (!sheet) placeMarketPicker(drop, anchor);
-    const close = function (e) {
+    placeMarketPicker(drop, anchor);
+    const close = function (ev) {
       if (!drop.isConnected) return;
-      if (Date.now() - openedAt < 400) return;
-      if (e && openedPtr != null && e.pointerId === openedPtr) return;
-      if (e && drop.contains(e.target)) return;
-      if (e && anchor && (e.target === anchor || (anchor.contains && anchor.contains(e.target)))) return;
+      if (ev && drop.contains(ev.target)) return;
+      if (ev && anchor && (ev.target === anchor || (anchor.contains && anchor.contains(ev.target)))) return;
       closeMarketPicker();
     };
-    const onScroll = function (e) {
-      if (sheet) return;
-      if (e && e.target && drop.contains(e.target)) return;
-      if (!anchor || !anchor.isConnected) { closeMarketPicker(); return; }
+    const onScroll = function (ev) {
+      if (ev && ev.target && drop.contains(ev.target)) return;
+      if (!anchor.isConnected) { closeMarketPicker(); return; }
       const r = anchor.getBoundingClientRect();
-      const vs = viewSize();
-      if (r.bottom < 8 || r.top > vs.h - 8) { closeMarketPicker(); return; }
+      if (r.bottom < 8 || r.top > (window.innerHeight || 0) - 8) { closeMarketPicker(); return; }
       placeMarketPicker(drop, anchor);
     };
     drop._cleanup = function () {
       document.removeEventListener('pointerdown', close, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('scroll', onScroll, true);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', close);
-        window.visualViewport.removeEventListener('scroll', onScroll);
-      }
     };
     setTimeout(function () {
       if (!drop.isConnected) return;
       document.addEventListener('pointerdown', close, true);
       window.addEventListener('resize', close);
       window.addEventListener('scroll', onScroll, true);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', sheet ? close : onScroll);
-        window.visualViewport.addEventListener('scroll', onScroll);
-      }
-    }, 450);
+    }, 0);
   }
   let subs = [];
   function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -1502,8 +1433,6 @@
     Draw: function () { return window.DemoDraw; },
     openMarketPicker: openMarketPicker,
     closeMarketPicker: closeMarketPicker,
-    useSheetPicker: useSheetPicker,
-    BUILD: "20261119d",
     activeCoin: coin,
     tf: function (i) { return panes[i || 0] && panes[i || 0].tf; },
     availableToTrade: availableToTrade,
