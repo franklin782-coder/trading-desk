@@ -1,0 +1,1619 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b0b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>TP/SL Calculator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2322d3ee'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2305070d'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="logos/BTC.png" />
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --card: #161616;
+      --card-2: #1c1c1c;
+      --line: #2a2a2a;
+      --text: #f5f5f5;
+      --muted: #8a8a8a;
+      --muted-2: #6b6b6b;
+      --green: #86e8a8;
+      --green-text: #86e8a8;
+      --green-dim: rgba(134, 232, 168, .12);
+      --red: #f6465d;
+      --red-text: #ff6b7d;
+      --red-dim: rgba(246, 70, 93, .12);
+      --btn-text: #0c1a12;
+      --r: 16px;
+      --safe-t: env(safe-area-inset-top);
+      --safe-b: env(safe-area-inset-bottom);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100dvh;
+    }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; border: 0; background: none; }
+    input {
+      background: transparent;
+      border: 0;
+      outline: none;
+      width: 100%;
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    /* iOS zoom guard */
+    input[type="text"], input[type="number"], input[type="search"] { font-size: 16px; }
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+    .page {
+      width: 100%;
+      max-width: 430px;
+      margin: 0 auto;
+      padding: calc(10px + var(--safe-t)) 14px calc(28px + var(--safe-b));
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      padding: 6px 2px;
+    }
+    .back:hover { color: var(--text); }
+    .top-title { font-size: 13px; color: var(--muted); }
+
+    .head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .coin-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #f5a623, #c47a00);
+      color: #fff;
+      font-weight: 800;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .coin-icon.alt { background: linear-gradient(180deg, #5b8def, #2f5fd0); font-size: 13px; }
+    .pair-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .coin-name {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: #cfcfcf;
+      background: #242424;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 6px;
+      white-space: nowrap;
+    }
+    .head-price { margin-left: auto; text-align: right; }
+    .head-price .lbl { display: block; font-size: 11px; color: var(--muted); }
+    .head-price-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    .head-price .val { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+    .head-price .note { display: block; font-size: 10px; color: var(--muted-2); margin-top: 1px; }
+    .refresh {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: #1c1c1c;
+      border: 1px solid var(--line);
+      color: #ddd;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .refresh:hover { background: #262626; color: #fff; }
+    .refresh svg { width: 15px; height: 15px; display: block; }
+    .refresh.spin svg { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .coin-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: -2px 0 14px;
+    }
+    .coin-bar button {
+      height: 32px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: #cfcfcf;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .coin-bar button .mx { font-size: 10px; font-weight: 650; color: var(--muted); }
+    .coin-bar button.on { background: #fff; color: #111; border-color: #fff; }
+    .coin-bar button.on .mx { color: #555; }
+
+    .platforms {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .platforms button {
+      height: 38px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.01em;
+    }
+    .platforms button.on { background: #fff; color: #111; border-color: #fff; }
+    .coin-icon { overflow: hidden; padding: 0; background: #111; }
+    .coin-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .coin-bar button img.lg {
+      width: 18px; height: 18px; border-radius: 50%; display: block; flex-shrink: 0;
+    }
+    .coin-bar button.off { opacity: 0.38; cursor: not-allowed; }
+    .coin-bar button .na { font-size: 9px; font-weight: 650; color: var(--muted); }
+
+    .sides {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .sides button {
+      height: 42px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .sides button.on-long { background: var(--green); color: var(--btn-text); border-color: transparent; }
+    .sides button.on-short { background: var(--red); color: #fff; border-color: transparent; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 14px 14px 12px;
+      margin-bottom: 10px;
+    }
+    .lbl {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .split {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .money {
+      display: flex;
+      align-items: baseline;
+      gap: 2px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .money .cur { font-size: 22px; color: var(--text); }
+    .money input { font-size: 28px; font-weight: 800; line-height: 1.1; }
+    .pos { text-align: right; }
+    .pos .val { font-size: 18px; font-weight: 800; margin-top: 2px; letter-spacing: -0.02em; }
+
+    .entry .money input { font-size: 28px; }
+
+    .lev-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .lev-edit {
+      display: flex;
+      align-items: center;
+      background: var(--card-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-weight: 800;
+      min-width: 72px;
+    }
+    .lev-edit input {
+      width: 4.2ch;
+      text-align: right;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .slider-wrap {
+      position: relative;
+      height: 44px;
+      margin: 4px 0 2px;
+    }
+    .slider-wrap input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 44px;
+      background: transparent;
+      margin: 0;
+      position: relative;
+      z-index: 2;
+    }
+    .slider-track {
+      position: absolute;
+      left: 0; right: 0;
+      top: 50%;
+      height: 4px;
+      border-radius: 99px;
+      background: #2c2c2c;
+      transform: translateY(-50%);
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .slider-fill {
+      height: 100%;
+      width: 0;
+      background: #5a5a5a;
+      border-radius: 99px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 46px;
+      height: 26px;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.4);
+      cursor: pointer;
+      border: 0;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 46px;
+      height: 26px;
+      border-radius: 999px;
+      background: #fff;
+      border: 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,.4);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-track { background: transparent; height: 4px; border: 0; }
+    .lev-bubble {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      height: 26px;
+      min-width: 46px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #fff;
+      color: #111;
+      font-weight: 800;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 3;
+      box-shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+
+    .chips { display: flex; gap: 8px; margin-top: 10px; }
+    .chips button {
+      flex: 1;
+      height: 34px;
+      border-radius: 10px;
+      background: #202020;
+      border: 1px solid #2e2e2e;
+      color: #d2d2d2;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .chips button.on { background: #2a2a2a; color: #fff; border-color: #3a3a3a; }
+    .chips.green button.on { background: var(--green-dim); color: var(--green-text); border-color: transparent; }
+    .chips.red button.on { background: var(--red-dim); color: var(--red-text); border-color: transparent; }
+
+    .liq-card {
+      background: var(--card);
+      border: 1px solid #3a2e14;
+      border-radius: var(--r);
+      padding: 12px 14px;
+      margin: 0 0 10px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .liq-card .liq-k {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffb020;
+      flex-shrink: 0;
+    }
+    .liq-vals {
+      text-align: right;
+      min-width: 0;
+    }
+    .liq-v {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffc44d;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+    }
+    .liq-p {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffb020;
+      margin-top: 2px;
+    }
+    .fee-edit {
+      padding: 0 2px 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--muted-2);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .fee-edit input {
+      width: 4.6ch;
+      text-align: right;
+      border-bottom: 1px dashed #3a3a3a;
+      font-size: 12px;
+      padding: 0;
+    }
+
+    .cta {
+      width: 100%;
+      height: 52px;
+      border-radius: 14px;
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0 0 16px;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cta.long { background: var(--green); color: var(--btn-text); }
+    .cta.short { background: var(--red); color: #fff; }
+
+    .sheet h2 {
+      margin: 0 0 16px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .block { margin-bottom: 18px; }
+    .block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .block-head .ttl { font-weight: 700; font-size: 15px; }
+    .block.tp .ttl { color: var(--green-text); }
+    .block.sl .ttl { color: var(--red-text); }
+    .clear {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+      padding: 6px 2px;
+    }
+    .clear:hover { color: var(--text); }
+
+    .fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .field {
+      background: var(--card-2);
+      border: 1px solid #262626;
+      border-radius: 12px;
+      padding: 8px 10px 8px;
+    }
+    .field.full { grid-column: 1 / -1; }
+    .field .lbl { font-size: 11px; margin-bottom: 2px; }
+    .field .row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    .field input { font-weight: 700; font-size: 18px; }
+    .field .pfx { color: #c8c8c8; }
+
+    .pnl-line {
+      margin-top: 10px;
+      text-align: right;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .pnl-line.tp { color: var(--green-text); }
+    .pnl-line.sl { color: var(--red-text); }
+    .pnl-line .net {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .move-line {
+      margin-top: 4px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .warn {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #ffb020;
+    }
+    .warn.danger {
+      color: #ff5c7a;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .rr {
+      text-align: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: #e8e8e8;
+      padding: 6px 0 2px;
+    }
+    .rr span { color: var(--muted); font-weight: 500; }
+
+    .paste h2 { margin: 0 0 6px; font-size: 16px; }
+    .hint {
+      margin: 0 0 14px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .paste-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid #232323;
+    }
+    .paste-row:first-of-type { border-top: 0; padding-top: 0; }
+    .paste-row .k { font-size: 12px; color: var(--muted); }
+    .paste-row .v {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+    .paste-row .v.tp { color: var(--green-text); }
+    .paste-row .v.sl { color: var(--red-text); }
+    .paste-row .v.liq { color: #ffc44d; }
+    .liq-alert {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(246, 70, 93, .14);
+      color: #ff5c7a;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .liq-alert.show { display: block; }
+    .copy-btn {
+      flex-shrink: 0;
+      height: 38px;
+      padding: 0 12px;
+      border-radius: 10px;
+      background: #fff;
+      color: #111;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .copy-btn.done { background: var(--green); color: var(--btn-text); }
+    .alts {
+      margin-top: 4px;
+      padding-top: 12px;
+      border-top: 1px solid #232323;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .alts b { color: #ddd; font-weight: 650; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(18px + var(--safe-b));
+      transform: translateX(-50%) translateY(16px);
+      background: #fff;
+      color: #111;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: .2s ease;
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <a class="back" href="../">← Trading Desk</a>
+      <div class="top-title">TP/SL Calculator</div>
+    </div>
+
+    <div class="platforms" role="tablist" aria-label="Platform">
+      <button type="button" id="btnAster" class="on">Aster</button>
+      <button type="button" id="btnHl">Hyperliquid</button>
+    </div>
+
+    <div class="head">
+      <div class="coin-icon" id="coinIcon"><img id="coinLogo" alt="BTC" src="logos/BTC.png" width="40" height="40"></div>
+      <div>
+        <div class="pair-name">
+          <span class="coin-name" id="coinName">BTC</span>
+          <span class="badge" id="maxLevBadge">40x</span>
+        </div>
+      </div>
+      <div class="head-price">
+        <span class="lbl" id="headPriceLbl">Price</span>
+        <div class="head-price-row">
+          <span class="val" id="headPrice">—</span>
+          <button type="button" class="refresh" id="refreshPrice" title="Refresh price" aria-label="Refresh price">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.3-6"/>
+              <path d="M21 3v6h-6"/>
+            </svg>
+          </button>
+        </div>
+        <span class="note" id="priceNote"></span>
+      </div>
+    </div>
+    <div class="coin-bar" id="coinBar"></div>
+
+    <div class="sides">
+      <button type="button" id="btnLong">Long</button>
+      <button type="button" id="btnShort">Short</button>
+    </div>
+
+    <section class="card">
+      <div class="split">
+        <div>
+          <div class="lbl">Margin</div>
+          <div class="money"><span class="cur">$</span><input id="margin" inputmode="decimal" enterkeyhint="done" aria-label="Margin" /></div>
+        </div>
+        <div class="pos">
+          <div class="lbl">Position</div>
+          <div class="val" id="position">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card entry">
+      <div class="lbl">Entry price</div>
+      <div class="money"><span class="cur">$</span><input id="entry" inputmode="decimal" enterkeyhint="done" aria-label="Entry price" /></div>
+    </section>
+
+    <section class="card">
+      <div class="lev-head">
+        <div class="lbl">Leverage</div>
+        <div class="lev-edit">
+          <input id="levNum" inputmode="numeric" enterkeyhint="done" aria-label="Leverage" />
+          <span>x</span>
+        </div>
+      </div>
+      <div class="slider-wrap">
+        <div class="slider-track"><div class="slider-fill" id="levFill"></div></div>
+        <input type="range" id="levRange" min="1" max="300" step="1" aria-label="Leverage" />
+        <div class="lev-bubble" id="levBubble">19x</div>
+      </div>
+      <div class="chips" id="levChips"></div>
+    </section>
+
+    <div class="liq-card" id="liqTopCard">
+      <div class="liq-k">Liquidation</div>
+      <div class="liq-vals">
+        <span class="liq-v" id="liq">—</span>
+        <span class="liq-p" id="liqPct"></span>
+      </div>
+    </div>
+    <div class="fee-edit">
+      <span>~$<span id="feeEst">—</span> fee</span>
+      <span>· taker</span>
+      <input id="feePct" inputmode="decimal" aria-label="Taker fee, % per side" />
+      <span>% / side</span>
+    </div>
+
+    <div class="cta long" id="cta">Long BTC</div>
+
+    <section class="card sheet">
+      <h2>Take profit & Stop loss</h2>
+
+      <div class="block tp">
+        <div class="block-head">
+          <div class="ttl">↑ Take profit</div>
+          <button type="button" class="clear" id="clearTp">× Clear</button>
+        </div>
+        <div class="fields">
+          <label class="field">
+            <div class="lbl">Price</div>
+            <div class="row"><span class="pfx">$</span><input id="tpPrice" inputmode="decimal" aria-label="TP price" /></div>
+          </label>
+          <label class="field">
+            <div class="lbl">Gain %</div>
+            <div class="row"><input id="tpPct" inputmode="decimal" aria-label="TP ROI %" /></div>
+          </label>
+          <label class="field full">
+            <div class="lbl">Profit $</div>
+            <div class="row"><span class="pfx">$</span><input id="tpUsd" inputmode="decimal" aria-label="TP profit $" /></div>
+          </label>
+        </div>
+        <div class="chips green" id="tpChips"></div>
+        <div class="pnl-line tp" id="tpLine"></div>
+        <div class="move-line" id="tpMove"></div>
+        <div class="warn" id="tpWarn" hidden></div>
+      </div>
+
+      <div class="block sl">
+        <div class="block-head">
+          <div class="ttl">↓ Stop loss</div>
+          <button type="button" class="clear" id="clearSl">× Clear</button>
+        </div>
+        <div class="fields">
+          <label class="field">
+            <div class="lbl">Price</div>
+            <div class="row"><span class="pfx">$</span><input id="slPrice" inputmode="decimal" aria-label="SL price" /></div>
+          </label>
+          <label class="field">
+            <div class="lbl">Loss %</div>
+            <div class="row"><input id="slPct" inputmode="decimal" aria-label="SL ROI %" /></div>
+          </label>
+          <label class="field full">
+            <div class="lbl">Loss $</div>
+            <div class="row"><span class="pfx">$</span><input id="slUsd" inputmode="decimal" aria-label="SL loss $" /></div>
+          </label>
+        </div>
+        <div class="chips red" id="slChips"></div>
+        <div class="pnl-line sl" id="slLine"></div>
+        <div class="move-line" id="slMove"></div>
+        <div class="warn" id="slWarn" hidden></div>
+      </div>
+
+      <div class="rr" id="rr"></div>
+    </section>
+
+    <section class="card paste">
+      <h2 id="pasteTitle">Enter on Aster (Price mode)</h2>
+      <p class="hint" id="pasteHint">Paste these TP and SL prices on Aster in Price mode. The order fills at that exact price (Aster uses Mark price by default). Price is more reliable than PnL or ROI(%): it does not depend on fees.</p>
+      <div class="paste-row">
+        <div>
+          <div class="k">TP price</div>
+          <div class="v tp" id="outTp">—</div>
+        </div>
+        <button type="button" class="copy-btn" id="copyTp">Copy</button>
+      </div>
+      <div class="paste-row">
+        <div>
+          <div class="k">SL price</div>
+          <div class="v sl" id="outSl">—</div>
+        </div>
+        <button type="button" class="copy-btn" id="copySl">Copy</button>
+      </div>
+      <div class="paste-row">
+        <div>
+          <div class="k">Liquidation</div>
+          <div class="v liq" id="outLiq">—</div>
+          <div class="k" id="outLiqPct"></div>
+        </div>
+        <button type="button" class="copy-btn" id="copyLiq">Copy</button>
+      </div>
+      <div class="liq-alert" id="liqAlert">Liquidation hits before the stop</div>
+      <div class="alts" id="alts"></div>
+    </section>
+  </div>
+  <div class="toast" id="toast">Copied</div>
+
+  <script>
+  (function () {
+    const KEY = 'tpsl-calc';
+    // Isolated MMR calibrated to Aster screenshot:
+    // BTC long, entry 60881, 19x, margin $1000 → est. liq $58,407 (−4.06%).
+    // leverageBracket is not public (401). 1.2% reproduces that number
+    // (60881 * (1 - 1/19 + 0.012) ≈ 58407.31). For coins whose max leverage
+    // is so high that 1.2% would exceed initial margin, cap MMR so liq stays
+    // on the correct side of entry.
+    // Hyperliquid isolated MMR = 1 / (2 * maxLeverage).
+    const BASE_MMR = 0.012;
+    const TP_CHIPS = [10, 25, 50, 100];
+    const SL_CHIPS = [-10, -25, -50, -75];
+    const LEV_CHIPS = [10, 20, 50, 100];
+    const ASTER_API = 'https://fapi.asterdex.com/fapi/v1';
+    const HL_INFO = 'https://api.hyperliquid.xyz/info';
+    const FEE_DEFAULTS = { aster: 0.05, hyperliquid: 0.045 };
+    const COINS = [
+      { id: 'BTC', name: 'BTC', color: '#f5a623',
+        aster: { symbol: 'BTCUSDT', max: 40, fallback: 61313 },
+        hl: { coin: 'BTC', max: 40, fallback: 61313 } },
+      { id: 'HYPE', name: 'HYPE', color: '#00c2a8',
+        aster: { symbol: 'HYPEUSDT', max: 300, fallback: 64.01 },
+        hl: { coin: 'HYPE', max: 10, fallback: 64.01 } },
+      { id: 'MRNA', name: 'MRNA', color: '#7c5cff',
+        aster: { symbol: 'MRNAUSDT', max: 20, fallback: 200.77 },
+        hl: { coin: 'xyz:MRNA', max: 10, fallback: 200.77, dex: 'xyz' } },
+      { id: 'ANT', name: 'ANT', color: '#4c8dff',
+        aster: { symbol: 'ANTUSDT', max: 20, fallback: 92.72 },
+        hl: { coin: 'xyz:ANT', max: 10, fallback: 92.72, dex: 'xyz' } },
+      { id: 'VVV', name: 'VVV', color: '#e0b84a',
+        aster: { symbol: 'VVVUSDT', max: 10, fallback: 26.06 },
+        hl: { coin: 'VVV', max: 3, fallback: 26.06 } },
+      { id: 'SOXL', name: 'SOXL', color: '#ff6b4a',
+        aster: { symbol: 'SOXLUSDT', max: 50, fallback: 36.39 },
+        hl: { coin: 'xyz:SOXL', max: 10, fallback: 36.39, dex: 'xyz' } },
+      { id: 'MU', name: 'MU', color: '#3db8ff',
+        aster: { symbol: 'MUUSD1', max: 20, fallback: 633.52 },
+        hl: { coin: 'xyz:MU', max: 10, fallback: 633.52, dex: 'xyz' } },
+      { id: 'AMD', name: 'AMD', color: '#ed1c24',
+        aster: { symbol: 'AMDUSDT', max: 50, fallback: 446.31 },
+        hl: { coin: 'xyz:AMD', max: 10, fallback: 446.31, dex: 'xyz' } },
+      { id: 'AVGO', name: 'AVGO', color: '#cc092f',
+        aster: { symbol: 'AVGOUSDT', max: 20, fallback: 321.54 },
+        hl: { coin: 'xyz:AVGO', max: 10, fallback: 321.54, dex: 'xyz' } },
+      { id: 'TSM', name: 'TSM', color: '#5b8def',
+        aster: { symbol: 'TSMUSDT', max: 20, fallback: 342.13 },
+        hl: { coin: 'xyz:TSM', max: 10, fallback: 342.13, dex: 'xyz' } },
+      { id: 'SKHYNIX', name: 'SKHYNIX', color: '#ff7a18',
+        aster: { symbol: 'SKHYNIXUSD1', max: 20, fallback: 815.85 },
+        hl: { coin: 'xyz:SKHX', max: 10, fallback: 815.85, dex: 'xyz' } },
+      { id: 'SOL', name: 'SOL', color: '#9945ff',
+        aster: { symbol: 'SOLUSDT', max: 100, fallback: 72.20 },
+        hl: { coin: 'SOL', max: 20, fallback: 72.20 } },
+      { id: 'NVDA', name: 'NVDA', color: '#76b900',
+        aster: { symbol: 'NVDAUSDT', max: 20, fallback: 136.53 },
+        hl: { coin: 'xyz:NVDA', max: 10, fallback: 136.53, dex: 'xyz' } },
+    ];
+    const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      coinName: $('coinName'), coinIcon: $('coinIcon'), coinLogo: $('coinLogo'), maxLevBadge: $('maxLevBadge'),
+      headPrice: $('headPrice'), headPriceLbl: $('headPriceLbl'), priceNote: $('priceNote'),
+      refreshPrice: $('refreshPrice'), coinBar: $('coinBar'),
+      btnAster: $('btnAster'), btnHl: $('btnHl'),
+      pasteTitle: $('pasteTitle'), pasteHint: $('pasteHint'),
+      btnLong: $('btnLong'), btnShort: $('btnShort'),
+      margin: $('margin'), position: $('position'), entry: $('entry'),
+      levNum: $('levNum'), levRange: $('levRange'), levBubble: $('levBubble'), levFill: $('levFill'),
+      levChips: $('levChips'), liq: $('liq'), liqPct: $('liqPct'),
+      outLiq: $('outLiq'), outLiqPct: $('outLiqPct'), liqAlert: $('liqAlert'),
+      feeEst: $('feeEst'), feePct: $('feePct'), cta: $('cta'),
+      tpPrice: $('tpPrice'), tpPct: $('tpPct'), tpUsd: $('tpUsd'),
+      slPrice: $('slPrice'), slPct: $('slPct'), slUsd: $('slUsd'),
+      tpChips: $('tpChips'), slChips: $('slChips'),
+      tpLine: $('tpLine'), slLine: $('slLine'),
+      tpMove: $('tpMove'), slMove: $('slMove'),
+      tpWarn: $('tpWarn'), slWarn: $('slWarn'),
+      rr: $('rr'), outTp: $('outTp'), outSl: $('outSl'), alts: $('alts'),
+      copyTp: $('copyTp'), copySl: $('copySl'), copyLiq: $('copyLiq'),
+      clearTp: $('clearTp'), clearSl: $('clearSl'), toast: $('toast'),
+    };
+
+    const state = {
+      side: 'long',
+      platform: 'aster',
+      coin: 'BTC',
+      margin: 1000,
+      entry: 60881,
+      lev: 19,
+      feePct: FEE_DEFAULTS.aster,
+      fees: { aster: FEE_DEFAULTS.aster, hyperliquid: FEE_DEFAULTS.hyperliquid },
+      tp: 10,   // ROI % on margin; null if cleared
+      sl: -10,
+      livePrice: null,
+      priceStatus: '', // loading | live | fallback
+    };
+
+    let hlCache = { at: 0, map: null };
+
+    const focused = new Set();
+    let toastTimer = 0;
+    let fetchGen = 0;
+
+    function currentCoin() {
+      return COIN_BY_ID[state.coin] || COINS[0];
+    }
+
+    function platformName() {
+      return state.platform === 'hyperliquid' ? 'Hyperliquid' : 'Aster';
+    }
+
+    function isHl() {
+      return state.platform === 'hyperliquid';
+    }
+
+    function coinSpec(coin) {
+      const c = coin || currentCoin();
+      return isHl() ? c.hl : c.aster;
+    }
+
+    function coinAvailable(coin) {
+      const s = coinSpec(coin);
+      return !!(s && s.max > 0);
+    }
+
+    function logoSrc(id) {
+      return 'logos/' + id + '.png';
+    }
+
+    function findCoin(raw) {
+      const s = String(raw || '').trim().toUpperCase();
+      if (!s) return null;
+      return COINS.find((c) => c.id === s || c.name === s) ||
+        COINS.find((c) => (c.aster && c.aster.symbol === s) || (c.hl && c.hl.coin === s)) ||
+        COINS.find((c) => c.aster && c.aster.symbol.startsWith(s)) ||
+        null;
+    }
+
+    function levMax() {
+      const s = coinSpec();
+      return (s && s.max) || 1;
+    }
+
+    function clampLev(v) {
+      const n = Math.round(Number(v));
+      if (!isFinite(n)) return 1;
+      return Math.min(levMax(), Math.max(1, n));
+    }
+
+    function parseNum(v) {
+      if (typeof v === 'number') return v;
+      if (v == null) return NaN;
+      let s = String(v).trim();
+      if (!s) return NaN;
+      s = s.replace(/[\s$\u00a0]/g, '').replace(/[−–—]/g, '-');
+      const neg = s.startsWith('-') || s.startsWith('+') ? s[0] : '';
+      if (neg) s = s.slice(1);
+      if (s.includes(',') && s.includes('.')) {
+        // 60,881.43 or 60.881,43 — last separator is decimal
+        if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+        else s = s.replace(/,/g, '');
+      } else if (s.includes(',')) {
+        const frac = s.split(',').pop();
+        // 1,000 / 60,881 — thousands; 60881,5 / 0,05 — decimal comma
+        s = (frac.length === 3 && s.split(',').every((p, i) => i === 0 ? /^\d{1,3}$/.test(p) : p.length === 3))
+          ? s.replace(/,/g, '')
+          : s.replace(',', '.');
+      }
+      const n = parseFloat(s);
+      return neg === '-' ? -n : n;
+    }
+
+    function priceDecimals(x) {
+      const a = Math.abs(x);
+      if (a >= 1000) return 2;
+      if (a >= 100) return 3;
+      if (a >= 1) return 4;
+      if (a >= 0.01) return 6;
+      if (a >= 0.0001) return 8;
+      return 10;
+    }
+
+    function trimFixed(x, d) {
+      if (!isFinite(x)) return '';
+      let s = Math.abs(x).toFixed(d);
+      if (s.includes('.')) s = s.replace(/\.?0+$/, '');
+      return (x < 0 ? '-' : '') + s;
+    }
+
+    function fmtPrice(x, withDollar) {
+      if (!isFinite(x)) return '—';
+      const d = priceDecimals(x);
+      const abs = Math.abs(x);
+      const s = abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
+      return (x < 0 ? '−' : '') + (withDollar ? '$' + s : s);
+    }
+
+    function copyPrice(x) {
+      if (!isFinite(x)) return '';
+      return trimFixed(x, priceDecimals(x));
+    }
+
+    function fmtUsd(x, signed) {
+      if (!isFinite(x)) return '—';
+      const body = Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const sign = x < 0 || Object.is(x, -0) ? '−' : (signed && x > 0 ? '+' : '');
+      return sign + '$' + body;
+    }
+
+    function fmtPct(x, signed) {
+      if (!isFinite(x)) return '—';
+      const body = trimFixed(Math.abs(x), Math.abs(x) >= 10 ? 2 : 2);
+      const sign = x < 0 ? '−' : (signed && x > 0 ? '+' : '');
+      return sign + body + '%';
+    }
+
+    function validBase() {
+      return state.margin > 0 && state.entry > 0 && state.lev >= 1;
+    }
+
+    function qty() {
+      return (state.margin * state.lev) / state.entry;
+    }
+
+    function position() {
+      return state.margin * state.lev;
+    }
+
+    function pnlAt(exit) {
+      const q = qty();
+      return state.side === 'long' ? q * (exit - state.entry) : q * (state.entry - exit);
+    }
+
+    function exitFromPnl(target) {
+      const q = qty();
+      if (!(q > 0)) return NaN;
+      return state.side === 'long' ? state.entry + target / q : state.entry - target / q;
+    }
+
+    function exitFromRoi(roiPct) {
+      return exitFromPnl(state.margin * (roiPct / 100));
+    }
+
+    function feesAt(exit) {
+      const rate = Math.max(0, state.feePct) / 100;
+      const open = position() * rate;
+      const close = qty() * exit * rate;
+      return { open, close, total: open + close };
+    }
+
+    function mmr() {
+      const maxL = levMax() || 40;
+      if (isHl()) return 1 / (2 * maxL);
+      const cap = Math.max(0.0001, 1 / maxL - 0.0005);
+      return Math.min(BASE_MMR, cap);
+    }
+
+    function liqPrice() {
+      if (!validBase()) return NaN;
+      const m = mmr();
+      if (state.side === 'long') {
+        const k = 1 - 1 / state.lev + m;
+        return (k > 0 && k < 1) ? state.entry * k : NaN;
+      }
+      const k = 1 + 1 / state.lev - m;
+      return (k > 1) ? state.entry * k : NaN;
+    }
+
+    function liqMovePct(liq) {
+      if (!isFinite(liq) || !(state.entry > 0)) return NaN;
+      return ((liq - state.entry) / state.entry) * 100;
+    }
+
+    function slBeyondLiq(slExit, liq) {
+      if (!isFinite(slExit) || !isFinite(liq)) return false;
+      return state.side === 'long' ? slExit <= liq : slExit >= liq;
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return;
+        const o = JSON.parse(raw);
+        if (o.side === 'long' || o.side === 'short') state.side = o.side;
+        if (o.platform === 'aster' || o.platform === 'hyperliquid') state.platform = o.platform;
+        if (typeof o.coin === 'string' && o.coin.trim()) {
+          const found = findCoin(o.coin);
+          if (found) state.coin = found.id;
+        }
+        if (isFinite(o.margin) && o.margin > 0) state.margin = o.margin;
+        if (isFinite(o.entry) && o.entry > 0) state.entry = o.entry;
+        if (isFinite(o.lev)) state.lev = Math.round(o.lev);
+        if (o.fees && typeof o.fees === 'object') {
+          if (isFinite(o.fees.aster) && o.fees.aster >= 0) state.fees.aster = o.fees.aster;
+          if (isFinite(o.fees.hyperliquid) && o.fees.hyperliquid >= 0) state.fees.hyperliquid = o.fees.hyperliquid;
+        }
+        if (isFinite(o.feePct) && o.feePct >= 0 && !o.fees) state.fees[state.platform] = o.feePct;
+        state.feePct = state.fees[state.platform];
+        state.tp = (o.tp == null || o.tp === '') ? null : (isFinite(o.tp) ? o.tp : state.tp);
+        state.sl = (o.sl == null || o.sl === '') ? null : (isFinite(o.sl) ? o.sl : state.sl);
+      } catch (e) { /* ignore */ }
+      state.lev = clampLev(state.lev);
+      state.feePct = state.fees[state.platform];
+    }
+
+    function save() {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({
+          side: state.side,
+          platform: state.platform,
+          coin: state.coin,
+          margin: state.margin,
+          entry: state.entry,
+          lev: state.lev,
+          feePct: state.feePct,
+          fees: state.fees,
+          tp: state.tp,
+          sl: state.sl,
+        }));
+      } catch (e) { /* ignore */ }
+    }
+
+    function bindInput(el, onCommit, { live } = {}) {
+      el.addEventListener('focus', () => focused.add(el));
+      el.addEventListener('blur', () => {
+        focused.delete(el);
+        onCommit(el.value);
+        render();
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') el.blur();
+      });
+      el.addEventListener('input', () => {
+        if (live) {
+          onCommit(el.value);
+          render();
+        }
+      });
+    }
+
+    function setIfUnfocused(el, value) {
+      if (focused.has(el)) return;
+      if (el.value !== value) el.value = value;
+    }
+
+    function positionBubble() {
+      const min = 1, max = levMax();
+      const pct = (state.lev - min) / (max - min);
+      const range = els.levRange;
+      const thumb = 46;
+      const x = pct * (range.offsetWidth - thumb) + thumb / 2;
+      els.levBubble.style.left = x + 'px';
+      els.levBubble.textContent = state.lev + 'x';
+      els.levFill.style.width = (x) + 'px';
+    }
+
+    function buildCoinBar() {
+      els.coinBar.innerHTML = '';
+      COINS.forEach((c) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.id = c.id;
+        const avail = coinAvailable(c);
+        const max = (coinSpec(c) && coinSpec(c).max) || 0;
+        b.innerHTML = '<img class="lg" alt="" src="' + logoSrc(c.id) + '"><span>' + c.name +
+          '</span><span class="mx">' + (avail ? (max + 'x') : 'n/a') + '</span>';
+        if (!avail) {
+          b.classList.add('off');
+          b.title = 'Not on ' + platformName();
+        }
+        b.addEventListener('click', () => selectCoin(c.id));
+        els.coinBar.appendChild(b);
+      });
+    }
+
+    function updateCoinBar() {
+      const id = currentCoin().id;
+      els.coinBar.querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('on', b.dataset.id === id);
+      });
+    }
+
+    function renderChips() {
+      els.levChips.innerHTML = '';
+      const max = levMax();
+      const chips = LEV_CHIPS.filter((v) => v < max);
+      if (!chips.includes(max)) chips.push(max);
+      chips.forEach((v) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = v + 'x';
+        if (state.lev === v) b.classList.add('on');
+        b.addEventListener('click', () => { state.lev = clampLev(v); save(); render(); });
+        els.levChips.appendChild(b);
+      });
+      els.tpChips.innerHTML = '';
+      TP_CHIPS.forEach((v) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = '+' + v + '%';
+        if (state.tp === v) b.classList.add('on');
+        b.addEventListener('click', () => { state.tp = v; save(); render(); });
+        els.tpChips.appendChild(b);
+      });
+      els.slChips.innerHTML = '';
+      SL_CHIPS.forEach((v) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = v + '%';
+        if (state.sl === v) b.classList.add('on');
+        b.addEventListener('click', () => { state.sl = v; save(); render(); });
+        els.slChips.appendChild(b);
+      });
+    }
+
+    function sideOk(kind, exit) {
+      if (!isFinite(exit) || !validBase()) return true;
+      if (kind === 'tp') {
+        return state.side === 'long' ? exit > state.entry : exit < state.entry;
+      }
+      return state.side === 'long' ? exit < state.entry : exit > state.entry;
+    }
+
+    function render() {
+      const coin = currentCoin();
+      if (els.coinLogo) {
+        if (els.coinLogo.getAttribute('src') !== logoSrc(coin.id)) els.coinLogo.src = logoSrc(coin.id);
+        els.coinLogo.alt = coin.name;
+      }
+      els.coinIcon.style.background = '#111';
+      els.coinName.textContent = coin.name;
+      els.maxLevBadge.textContent = levMax() + 'x';
+      els.btnAster.classList.toggle('on', !isHl());
+      els.btnHl.classList.toggle('on', isHl());
+      buildCoinBar();
+      updateCoinBar();
+
+      const long = state.side === 'long';
+      els.btnLong.className = long ? 'on-long' : '';
+      els.btnShort.className = long ? '' : 'on-short';
+      els.cta.className = 'cta ' + (long ? 'long' : 'short');
+      els.cta.textContent = (long ? 'Long ' : 'Short ') + coin.name;
+
+      state.lev = clampLev(state.lev);
+      setIfUnfocused(els.margin, focused.has(els.margin) ? els.margin.value : trimFixed(state.margin, 2));
+      setIfUnfocused(els.entry, focused.has(els.entry) ? els.entry.value : trimFixed(state.entry, priceDecimals(state.entry)));
+      setIfUnfocused(els.levNum, String(state.lev));
+      els.levRange.max = String(levMax());
+      els.levRange.value = String(state.lev);
+      setIfUnfocused(els.feePct, trimFixed(state.feePct, 4));
+
+      const shown = (state.livePrice > 0) ? state.livePrice : state.entry;
+      els.headPrice.textContent = isFinite(shown) && shown > 0 ? fmtPrice(shown, true) : '—';
+      if (state.priceStatus === 'loading') {
+        els.priceNote.textContent = 'loading…';
+        els.refreshPrice.classList.add('spin');
+      } else if (state.priceStatus === 'live') {
+        els.priceNote.textContent = 'Mark from ' + platformName();
+        els.refreshPrice.classList.remove('spin');
+      } else if (state.priceStatus === 'fallback') {
+        els.priceNote.textContent = 'offline, last known';
+        els.refreshPrice.classList.remove('spin');
+      } else {
+        els.priceNote.textContent = '';
+        els.refreshPrice.classList.remove('spin');
+      }
+      els.position.textContent = validBase()
+        ? (Number.isInteger(position()) ? '$' + position().toLocaleString('en-US') : fmtUsd(position()))
+        : '—';
+
+      const liq = liqPrice();
+      const liqPctVal = liqMovePct(liq);
+      els.liq.textContent = isFinite(liq) ? ('~' + fmtPrice(liq, true)) : 'n/a';
+      if (isFinite(liqPctVal)) {
+        els.liqPct.textContent = fmtPct(liqPctVal, true) + ' · isolated';
+      } else if (validBase() && 1 / state.lev <= mmr()) {
+        els.liqPct.textContent = 'rough estimate at this leverage';
+      } else {
+        els.liqPct.textContent = '';
+      }
+
+      const feeOpenCloseAtEntry = validBase() ? feesAt(state.entry).total : NaN;
+      els.feeEst.textContent = isFinite(feeOpenCloseAtEntry)
+        ? Math.abs(feeOpenCloseAtEntry).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+
+      requestAnimationFrame(positionBubble);
+      renderChips();
+
+      const tpExit = state.tp == null ? NaN : exitFromRoi(state.tp);
+      const slExit = state.sl == null ? NaN : exitFromRoi(state.sl);
+
+      if (state.tp == null) {
+        setIfUnfocused(els.tpPrice, '');
+        setIfUnfocused(els.tpPct, '');
+        setIfUnfocused(els.tpUsd, '');
+        els.tpLine.innerHTML = '';
+        els.tpMove.textContent = '';
+        els.tpWarn.hidden = true;
+      } else if (validBase() && isFinite(tpExit)) {
+        const gross = pnlAt(tpExit);
+        const net = gross - feesAt(tpExit).total;
+        const move = ((tpExit - state.entry) / state.entry) * 100;
+        setIfUnfocused(els.tpPrice, trimFixed(tpExit, priceDecimals(tpExit)));
+        setIfUnfocused(els.tpPct, (state.tp > 0 ? '+' : '') + trimFixed(state.tp, 2));
+        setIfUnfocused(els.tpUsd, (gross > 0 ? '+' : '') + trimFixed(gross, 2));
+        els.tpLine.innerHTML = 'Profit: ' + fmtUsd(gross, true) +
+          '<span class="net">net: ' + fmtUsd(net, true) + '</span>';
+        els.tpMove.textContent = 'price move ' + fmtPct(move, true);
+        if (!sideOk('tp', tpExit)) {
+          els.tpWarn.hidden = false;
+          els.tpWarn.textContent = 'TP price is not on the profit side for this direction.';
+        } else {
+          els.tpWarn.hidden = true;
+        }
+      } else {
+        els.tpLine.innerHTML = '';
+        els.tpMove.textContent = '';
+        els.tpWarn.hidden = true;
+      }
+
+      if (state.sl == null) {
+        setIfUnfocused(els.slPrice, '');
+        setIfUnfocused(els.slPct, '');
+        setIfUnfocused(els.slUsd, '');
+        els.slLine.innerHTML = '';
+        els.slMove.textContent = '';
+        els.slWarn.hidden = true;
+      } else if (validBase() && isFinite(slExit)) {
+        const gross = pnlAt(slExit);
+        const net = gross - feesAt(slExit).total;
+        const move = ((slExit - state.entry) / state.entry) * 100;
+        setIfUnfocused(els.slPrice, trimFixed(slExit, priceDecimals(slExit)));
+        setIfUnfocused(els.slPct, (state.sl > 0 ? '+' : '') + trimFixed(state.sl, 2));
+        setIfUnfocused(els.slUsd, trimFixed(gross, 2));
+        els.slLine.innerHTML = 'Loss: ' + fmtUsd(gross, true) +
+          '<span class="net">net: ' + fmtUsd(net, true) + '</span>';
+        els.slMove.textContent = 'price move ' + fmtPct(move, true);
+        let warn = '';
+        let danger = false;
+        if (!sideOk('sl', slExit)) warn = 'SL price is not on the loss side for this direction.';
+        else if (slBeyondLiq(slExit, liq)) {
+          warn = 'Liquidation hits before the stop';
+          danger = true;
+        }
+        els.slWarn.hidden = !warn;
+        els.slWarn.textContent = warn;
+        els.slWarn.classList.toggle('danger', danger);
+      } else {
+        els.slLine.innerHTML = '';
+        els.slMove.textContent = '';
+        els.slWarn.hidden = true;
+      }
+
+      if (validBase() && isFinite(tpExit) && isFinite(slExit) && state.tp != null && state.sl != null) {
+        const reward = pnlAt(tpExit);
+        const risk = Math.abs(pnlAt(slExit));
+        if (risk > 0 && reward > 0) {
+          const ratio = reward / risk;
+          els.rr.textContent = 'R:R  1 : ' + trimFixed(ratio, 2);
+        } else {
+          els.rr.textContent = 'R:R —';
+        }
+      } else {
+        els.rr.textContent = 'R:R —';
+      }
+
+      const tpOk = validBase() && state.tp != null && isFinite(tpExit);
+      const slOk = validBase() && state.sl != null && isFinite(slExit);
+      els.outTp.textContent = tpOk ? copyPrice(tpExit) : '—';
+      els.outSl.textContent = slOk ? copyPrice(slExit) : '—';
+      els.outLiq.textContent = isFinite(liq) ? ('~' + fmtPrice(liq, true)) : '—';
+      els.outLiqPct.textContent = isFinite(liqPctVal) ? fmtPct(liqPctVal, true) + ' from entry · isolated' : '';
+      const showAlert = slOk && slBeyondLiq(slExit, liq);
+      els.liqAlert.classList.toggle('show', !!showAlert);
+
+      if (isHl()) {
+        els.pasteTitle.textContent = 'Enter on Hyperliquid (price)';
+        els.pasteHint.textContent = 'Paste these TP and SL prices on Hyperliquid. The order fills at that exact price (Hyperliquid uses Mark price for TP/SL). Price is more reliable than PnL or ROI(%): it does not depend on fees.';
+      } else {
+        els.pasteTitle.textContent = 'Enter on Aster (Price mode)';
+        els.pasteHint.textContent = 'Paste these TP and SL prices on Aster in Price mode. The order fills at that exact price (Aster uses Mark price by default). Price is more reliable than PnL or ROI(%): it does not depend on fees.';
+      }
+
+      const bits = [];
+      if (tpOk) {
+        const g = pnlAt(tpExit);
+        bits.push('For PnL mode: TP <b>' + fmtUsd(g, true) + '</b>' +
+          (slOk ? ' · SL <b>' + fmtUsd(pnlAt(slExit), true) + '</b>' : ''));
+        bits.push('For ROI(%) mode: TP <b>' + fmtPct(state.tp, true) + '</b>' +
+          (slOk ? ' · SL <b>' + fmtPct(state.sl, true) + '</b>' : ''));
+      } else if (slOk) {
+        bits.push('For PnL mode: SL <b>' + fmtUsd(pnlAt(slExit), true) + '</b>');
+        bits.push('For ROI(%) mode: SL <b>' + fmtPct(state.sl, true) + '</b>');
+      }
+      els.alts.innerHTML = bits.join('<br>');
+    }
+
+    function toast(text) {
+      els.toast.textContent = text;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1400);
+    }
+
+    async function copy(kind) {
+      let text = '';
+      if (kind === 'liq') {
+        const liq = liqPrice();
+        text = isFinite(liq) ? copyPrice(liq) : '';
+      } else {
+        const exit = kind === 'tp' ? exitFromRoi(state.tp) : exitFromRoi(state.sl);
+        text = copyPrice(exit);
+      }
+      if (!text) { toast('No price'); return; }
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e2) {}
+        document.body.removeChild(ta);
+      }
+      const btn = kind === 'tp' ? els.copyTp : kind === 'sl' ? els.copySl : els.copyLiq;
+      btn.textContent = 'Done';
+      btn.classList.add('done');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1200);
+      toast('Copied: ' + text);
+    }
+
+    bindInput(els.margin, (v) => {
+      const n = parseNum(v);
+      if (n > 0) state.margin = n;
+      save();
+    }, { live: true });
+
+    bindInput(els.entry, (v) => {
+      const n = parseNum(v);
+      if (n > 0) state.entry = n;
+      save();
+    }, { live: true });
+
+    bindInput(els.feePct, (v) => {
+      const n = parseNum(v);
+      if (isFinite(n) && n >= 0 && n < 50) {
+        state.feePct = n;
+        state.fees[state.platform] = n;
+      }
+      save();
+    }, { live: true });
+
+    function setLev(v) {
+      const n = Math.round(parseNum(v));
+      if (!isFinite(n)) return;
+      state.lev = clampLev(n);
+      save();
+    }
+
+    async function fetchAsterPrice(symbol) {
+      try {
+        const r = await fetch(ASTER_API + '/premiumIndex?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          const p = parseFloat(j.markPrice);
+          if (p > 0) return p;
+        }
+      } catch (e) { /* try last price */ }
+      try {
+        const r = await fetch(ASTER_API + '/ticker/price?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          const p = parseFloat(j.price);
+          if (p > 0) return p;
+        }
+      } catch (e) { /* fallback */ }
+      return null;
+    }
+
+    async function hlInfo(body) {
+      const r = await fetch(HL_INFO, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+      });
+      if (!r.ok) throw new Error('hl ' + r.status);
+      return r.json();
+    }
+
+    function ingestHl(pair, dex) {
+      const meta = pair && pair[0];
+      const ctxs = pair && pair[1];
+      const uni = (meta && meta.universe) || [];
+      const out = {};
+      uni.forEach((u, i) => {
+        const ctx = ctxs && ctxs[i];
+        const px = parseFloat(ctx && (ctx.markPx || ctx.midPx || ctx.oraclePx));
+        const key = dex ? (dex + ':' + u.name) : u.name;
+        out[key] = { px: px > 0 ? px : null, max: u.maxLeverage };
+      });
+      return out;
+    }
+
+    async function fetchHlMap(force) {
+      if (!force && hlCache.map && (Date.now() - hlCache.at) < 15000) return hlCache.map;
+      const [main, xyz] = await Promise.all([
+        hlInfo({ type: 'metaAndAssetCtxs' }),
+        hlInfo({ type: 'metaAndAssetCtxs', dex: 'xyz' }),
+      ]);
+      const map = Object.assign({}, ingestHl(main, null), ingestHl(xyz, 'xyz'));
+      // Apply live max leverage onto coin defs
+      COINS.forEach((c) => {
+        if (!c.hl) return;
+        const row = map[c.hl.coin];
+        if (row && row.max > 0) c.hl.max = row.max;
+      });
+      hlCache = { at: Date.now(), map: map };
+      return map;
+    }
+
+    async function fetchLive() {
+      const spec = coinSpec();
+      if (!spec) return null;
+      if (isHl()) {
+        try {
+          const map = await fetchHlMap(true);
+          const row = map[spec.coin];
+          if (row && row.px > 0) return row.px;
+        } catch (e) { /* fallback */ }
+        return null;
+      }
+      return fetchAsterPrice(spec.symbol);
+    }
+
+    async function refreshPrice({ fillEntry, quiet } = {}) {
+      const coin = currentCoin();
+      const spec = coinSpec(coin);
+      const gen = ++fetchGen;
+      state.priceStatus = 'loading';
+      render();
+      const live = await fetchLive();
+      if (gen !== fetchGen) return;
+      const fallback = spec && spec.fallback;
+      if (live > 0) {
+        state.livePrice = live;
+        state.priceStatus = 'live';
+        if (fillEntry && !focused.has(els.entry)) state.entry = live;
+      } else {
+        state.livePrice = fallback || null;
+        state.priceStatus = 'fallback';
+        if (fillEntry && !focused.has(els.entry) && fallback > 0) state.entry = fallback;
+        if (!quiet) toast('No price from ' + platformName() + ', using last known');
+      }
+      save();
+      render();
+    }
+
+    function selectCoin(id) {
+      const coin = COIN_BY_ID[id];
+      if (!coin) return;
+      if (!coinAvailable(coin)) {
+        toast('Not on ' + platformName());
+        return;
+      }
+      state.coin = coin.id;
+      state.lev = clampLev(state.lev);
+      save();
+      render();
+      refreshPrice({ fillEntry: true });
+    }
+
+    function setPlatform(id) {
+      if (id !== 'aster' && id !== 'hyperliquid') return;
+      if (state.platform === id) return;
+      state.platform = id;
+      state.feePct = state.fees[id];
+      if (!coinAvailable(currentCoin())) {
+        const first = COINS.find((c) => coinAvailable(c));
+        if (first) state.coin = first.id;
+      }
+      state.lev = clampLev(state.lev);
+      state.livePrice = null;
+      save();
+      render();
+      refreshPrice({ fillEntry: true });
+    }
+    bindInput(els.levNum, (v) => { setLev(v); }, { live: true });
+    els.levRange.addEventListener('input', () => { setLev(els.levRange.value); render(); });
+
+    bindInput(els.tpPrice, (v) => {
+      if (!String(v).trim()) { state.tp = null; save(); return; }
+      const n = parseNum(v);
+      if (!isFinite(n) || !validBase()) return;
+      const roi = pnlAt(n) / state.margin * 100;
+      if (isFinite(roi)) state.tp = roi;
+      save();
+    }, { live: true });
+
+    bindInput(els.tpPct, (v) => {
+      if (!String(v).trim()) { state.tp = null; save(); return; }
+      const n = parseNum(v);
+      if (!isFinite(n)) return;
+      state.tp = n;
+      save();
+    }, { live: true });
+
+    bindInput(els.tpUsd, (v) => {
+      if (!String(v).trim()) { state.tp = null; save(); return; }
+      const n = parseNum(v);
+      if (!isFinite(n) || !validBase() || !(state.margin > 0)) return;
+      state.tp = (n / state.margin) * 100;
+      save();
+    }, { live: true });
+
+    bindInput(els.slPrice, (v) => {
+      if (!String(v).trim()) { state.sl = null; save(); return; }
+      const n = parseNum(v);
+      if (!isFinite(n) || !validBase()) return;
+      const roi = pnlAt(n) / state.margin * 100;
+      if (isFinite(roi)) state.sl = roi;
+      save();
+    }, { live: true });
+
+    bindInput(els.slPct, (v) => {
+      if (!String(v).trim()) { state.sl = null; save(); return; }
+      const n = parseNum(v);
+      if (!isFinite(n)) return;
+      state.sl = n;
+      save();
+    }, { live: true });
+
+    bindInput(els.slUsd, (v) => {
+      if (!String(v).trim()) { state.sl = null; save(); return; }
+      let n = parseNum(v);
+      if (!isFinite(n) || !validBase() || !(state.margin > 0)) return;
+      if (n > 0) n = -n;
+      state.sl = (n / state.margin) * 100;
+      save();
+    }, { live: true });
+
+    els.btnAster.addEventListener('click', () => setPlatform('aster'));
+    els.btnHl.addEventListener('click', () => setPlatform('hyperliquid'));
+    els.btnLong.addEventListener('click', () => { state.side = 'long'; save(); render(); });
+    els.btnShort.addEventListener('click', () => { state.side = 'short'; save(); render(); });
+    els.clearTp.addEventListener('click', () => { state.tp = null; save(); render(); });
+    els.clearSl.addEventListener('click', () => { state.sl = null; save(); render(); });
+    els.copyTp.addEventListener('click', () => copy('tp'));
+    els.copySl.addEventListener('click', () => copy('sl'));
+    els.copyLiq.addEventListener('click', () => copy('liq'));
+    els.refreshPrice.addEventListener('click', () => refreshPrice({ fillEntry: true }));
+    window.addEventListener('resize', positionBubble);
+
+    load();
+    buildCoinBar();
+    render();
+    refreshPrice({ fillEntry: false, quiet: true });
+  })();
+  </script>
+</body>
+</html>
