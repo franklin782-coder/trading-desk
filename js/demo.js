@@ -26,6 +26,7 @@
   try { ui = B.loadUi(); } catch (e) { console.error('loadUi', e); ui = B.defaultUi(); }
   if (!book) book = B.defaultBook();
   if (!ui) ui = B.defaultUi();
+  if (!ui.chartLines) ui.chartLines = { entry: true, tp: true, sl: true, liq: true };
   const live = {};
   M.CATALOG.forEach(function (m) {
     const fb = M.FALLBACK[m.id] || {};
@@ -114,6 +115,7 @@
       if (ctx.funding != null) x.funding = +ctx.funding;
       if (ctx.prevDayPx) x.prevDay = +ctx.prevDayPx;
       if (ctx.dayNtlVlm) x.vol = +ctx.dayNtlVlm;
+      if (ctx.openInterest != null) x.oi = +ctx.openInterest;
       if (ctx.impactPxs && ctx.impactPxs.length >= 2) {
         x.bid = +ctx.impactPxs[0] || x.bid;
         x.ask = +ctx.impactPxs[1] || x.ask;
@@ -131,10 +133,11 @@
       const tables = {};
       (meta.marginTables || []).forEach(function (t) { tables[t[0]] = t[1]; });
       (meta.universe || []).forEach(function (u, i) {
-        if (!live[u.name]) return;
+        const id = live[u.name] ? u.name : (live['xyz:' + u.name] ? 'xyz:' + u.name : (u.name && u.name.indexOf('xyz:') === 0 && live[u.name.slice(4)] ? u.name.slice(4) : null));
+        if (!id) return;
         const tab = tables[u.marginTableId];
-        if (tab && tab.marginTiers) L(u.name).marginTiers = tab.marginTiers;
-        applyMeta(u.name, u, ctxs[i]);
+        if (tab && tab.marginTiers) L(id).marginTiers = tab.marginTiers;
+        applyMeta(id, u, ctxs[i]);
       });
     });
   }
@@ -380,25 +383,28 @@
     const pos = (book.positions || []).filter(function (p) { return p.coin === c; });
     const pends = (book.pending || []).filter(function (o) { return o.coin === c && o.status !== 'filled' && o.status !== 'canceled'; });
     let html = '';
+    const lines = ui.chartLines || { entry: true, tp: true, sl: true, liq: true };
     pos.forEach(function (p) {
       const mark = lastPx(p.coin);
       const u = C.unrealized(p.side, p.entry, mark, p.qty);
+      const roe = C.roePct(u - (p.openFee || 0), p.margin);
+      const pnlLab = fmtPnlUsd(u) + ' · ' + (roe >= 0 ? '+' : '') + (isFinite(roe) ? roe.toFixed(2) : '0.00') + '%';
       const lc = p.side === 'long' ? TV.up : TV.dn;
-      if (yAtPrice(pane, p.entry) != null) {
+      if (lines.entry !== false && yAtPrice(pane, p.entry) != null) {
         html += '<div class="tv-row" style="--lc:' + lc + '" data-xid="pos:' + p.id + '">' +
           '<div class="tv-hline"></div>' +
           '<div class="tv-badge" style="left:80px;transform:translate(0,-50%)"><span class="tv-qty">' + fmtQtyLabel(p.qty, c) + '</span></div>' +
-          '<div class="tv-badge center" style="left:50%;transform:translate(-50%,-50%)"><span class="tv-pnl' + (u < 0 ? ' neg' : '') + '">' + fmtPnlUsd(u) + '</span>' +
+          '<div class="tv-badge center" style="left:50%;transform:translate(-50%,-50%)"><span class="tv-pnl' + (u < 0 ? ' neg' : '') + '">' + pnlLab + '</span>' +
           '<button type="button" class="tv-x" data-act="pos:' + p.id + '">×</button></div>' +
           '<div class="tv-axis">' + fmtPx(p.entry, c) + '</div></div>';
       }
-      if (p.sl > 0 && yAtPrice(pane, p.sl) != null) {
+      if (lines.sl !== false && p.sl > 0 && yAtPrice(pane, p.sl) != null) {
         html += rowHtml('', TV.blue, '', p.side === 'long' ? 'Sell STP' : 'Buy STP', fmtPx(p.sl, c), 'sl:' + p.id, false);
       }
-      if (p.tp > 0 && yAtPrice(pane, p.tp) != null) {
+      if (lines.tp !== false && p.tp > 0 && yAtPrice(pane, p.tp) != null) {
         html += rowHtml('', TV.blue, '', p.side === 'long' ? 'Sell LMT' : 'Buy LMT', fmtPx(p.tp, c), 'tp:' + p.id, false);
       }
-      if (p.liq > 0 && yAtPrice(pane, p.liq) != null) {
+      if (lines.liq !== false && p.liq > 0 && yAtPrice(pane, p.liq) != null) {
         html += '<div class="tv-row" data-xid="liq:' + p.id + '" style="--lc:' + TV.orange + '"><div class="tv-hline dash"></div><div class="tv-axis liq">Liq ' + fmtPx(p.liq, c) + '</div></div>';
       }
     });
@@ -478,7 +484,7 @@
     div.dataset.pane = String(i);
     const short = M.shortName(spec.coin);
     const tfs = M.TIMEFRAMES.map(function (tf) {
-      return '<button type="button" data-tf="' + tf + '"' + (tf === spec.tf ? ' class="on"' : '') + '>' + tf + '</button>';
+      return '<button type="button" data-tf="' + tf + '"' + (tf === spec.tf ? ' class="on"' : '') + '>' + (M.tfLabel ? M.tfLabel(tf) : tf) + '</button>';
     }).join('');
     div.innerHTML =
       '<div class="pane-head">' +
@@ -624,6 +630,7 @@
     if (!host) return;
     const layout = ui.layout || 1;
     ui.panes = B.panesForLayout(layout, ui.panes);
+    ui.panes.forEach(function (spec) { if (M.normalizeTf) spec.tf = M.normalizeTf(spec.tf); });
     host.className = 'chart-grid layout-' + layout;
     host.innerHTML = '';
     panes.length = 0;
@@ -770,6 +777,12 @@
     const hint = $('#levMaxHint'); if (hint) hint.textContent = 'max ' + max + 'x';
     const lv = $('#levVal'); if (lv) lv.textContent = leverage + 'x';
     const inp = $('#inpLev'); if (inp) { inp.max = max; inp.value = leverage; }
+    const ml = $('#mobLevLab'); if (ml) ml.textContent = leverage + 'x';
+    const mr = $('#mobLevRange'); if (mr) { mr.max = max; mr.value = leverage; }
+    const go = $('#btnOpen');
+    if (go && document.body.classList.contains('is-mob')) {
+      go.textContent = (side === 'short' ? 'Short ' : 'Long ') + M.shortName(c);
+    }
     $('#btnCross').classList.toggle('on', marginMode === 'cross');
     $('#btnIso').classList.toggle('on', marginMode === 'isolated');
     const note = $('#calcNote');
@@ -866,7 +879,13 @@
       tp: +$('#inpTpPx').value, sl: +$('#inpSlPx').value
     });
     const g = $('#calcGrid'); if (!g) return;
-    if (!plan.ok) { g.innerHTML = '<div class="kv wide"><span>Calculator</span><b>—</b></div>'; return; }
+    const liqEl = $('#mobEstLiq');
+    if (!plan.ok) {
+      g.innerHTML = '<div class="kv wide"><span>Calculator</span><b>—</b></div>';
+      if (liqEl) liqEl.textContent = '—';
+      return;
+    }
+    if (liqEl) liqEl.textContent = plan.liq ? fmtPx(plan.liq, c) : '—';
     const kvs = [
       ['POSITION SIZE', fmtUsd(plan.notional)], ['MARGIN', fmtUsd(plan.margin)],
       ['ENTRY PRICE', fmtPx(plan.entry, c)], ['SIZE (CONTRACTS)', String(plan.qty)],
@@ -1020,6 +1039,7 @@
     renderAccount(); renderMarketBar(); renderPositions();
     syncTicketHeader(); updateCalc();
     panes.forEach(renderOverlay);
+    if (typeof syncMobChrome === 'function') syncMobChrome();
     if (proView) renderProDock();
     if (ui.view === 'portfolio' && window.DemoPortfolio) DemoPortfolio.render($('#portfolioView'), book, marksMap(), ui);
   }
@@ -1055,6 +1075,7 @@
     renderAccount();
     panes.forEach(renderOverlay);
     updateCalc();
+    if (typeof syncMobChrome === 'function') syncMobChrome();
   }
   function err(msg) {
     const el = $('#orderErr'); if (!el) return;
@@ -1090,6 +1111,7 @@
       const r = B.fillPosition(book, base, fill, 'market', marksMap());
       if (!r.ok) { err(r.error || 'Order rejected.'); return; }
       persist(); renderAll(); toast((side === 'long' ? 'Long' : 'Short') + ' ' + M.shortName(c) + ' filled at ' + fmtPx(fill, c));
+      onTicketPlaced();
       return;
     }
     if (typ === 'scale') {
@@ -1102,6 +1124,7 @@
       }
       B.tickOrders(book, tickCtx());
       persist(); renderAll(); toast('Scale: ' + n + ' limit orders placed');
+      onTicketPlaced();
       return;
     }
     if (typ === 'twap') {
@@ -1120,6 +1143,7 @@
         }
       }));
       persist(); renderAll(); toast('TWAP started (' + minutes + ' min)');
+      onTicketPlaced();
       return;
     }
     if (typ === 'trailingStop') {
@@ -1129,6 +1153,7 @@
         typ: 'trailingStop', trail: { offsetPct: pct || 0, offsetPx: dist || 0, activationPx: act || 0, activated: !act }
       }));
       persist(); renderAll(); toast('Trailing stop placed');
+      onTicketPlaced();
       return;
     }
     const limitPx = +$('#inpLimit').value, triggerPx = +$('#inpTrigger').value;
@@ -1142,12 +1167,14 @@
       persist(); renderAll();
       const still = (book.pending || []).some(function (p) { return p.id === o.id; });
       toast(still ? (M.shortName(c) + ' ' + typ + ' resting') : (M.shortName(c) + ' filled'));
+      onTicketPlaced();
       return;
     }
     B.placeWorkingOrder(book, Object.assign({}, base, { typ: typ, tif: tif, limitPx: limitPx || null, triggerPx: triggerPx }));
     B.tickOrders(book, tickCtx());
     persist(); renderAll();
     toast(orderKind({ typ: typ }) + ' order placed on ' + M.shortName(c));
+      onTicketPlaced();
   }
 
   function desiredView() {
@@ -1324,6 +1351,370 @@
     setInterval(function () { B.snapshotEquity(book, marksMap()); persist(); }, 60000);
   }
 
+
+  const HANDOFF_KEY = 'td-calc-handoff';
+  const MOB_MQ = window.matchMedia('(max-width: 820px)');
+  let mobView = 'markets';
+  let mobFilter = 'all';
+  let mobPadFresh = true;
+
+  function isMob() { return MOB_MQ.matches; }
+
+  function applyTicket(o) {
+    if (!o) return;
+    if (o.side === 'long' || o.side === 'short') {
+      side = o.side;
+      if ($('#btnLong')) $('#btnLong').classList.toggle('on', side === 'long');
+      if ($('#btnShort')) $('#btnShort').classList.toggle('on', side === 'short');
+    }
+    if (o.sizeMode === 'margin' || o.sizeMode === 'notional') {
+      sizeMode = o.sizeMode;
+      if ($('#btnMargin')) $('#btnMargin').classList.toggle('on', sizeMode === 'margin');
+      if ($('#btnNotional')) $('#btnNotional').classList.toggle('on', sizeMode === 'notional');
+    }
+    if (o.size != null && $('#inpSize')) { sizeSource = 'input'; $('#inpSize').value = o.size; }
+    if (o.lev != null) {
+      const maxL = (L(o.coin || coin()) && L(o.coin || coin()).maxLeverage) || 40;
+      leverage = Math.max(1, Math.min(+o.lev || 1, maxL));
+    }
+    if (o.tab === 'limit' || o.tab === 'market' || o.tab === 'pro') {
+      tab = o.tab;
+      $$('[data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
+    }
+    if (o.limit != null && +o.limit > 0 && $('#inpLimit')) {
+      $('#inpLimit').value = o.limit;
+      if (!o.tab) {
+        tab = 'limit';
+        $$('[data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
+      }
+    }
+    if (o.tp != null && $('#inpTpPx')) $('#inpTpPx').value = (o.tp === '' || o.tp == null) ? '' : o.tp;
+    if (o.sl != null && $('#inpSlPx')) $('#inpSlPx').value = (o.sl === '' || o.sl == null) ? '' : o.sl;
+    if (o.tpslOn != null && $('#inpTpslOn')) $('#inpTpslOn').checked = !!o.tpslOn;
+    else if ((+o.tp > 0 || +o.sl > 0) && $('#inpTpslOn')) $('#inpTpslOn').checked = true;
+    syncTicketHeader(); showTicketFields(); updateCalc();
+  }
+
+  function mapDemoCoin(id) {
+    if (!id) return id;
+    if (live[id]) return id;
+    const map = {
+      BTC: 'BTC', HYPE: 'HYPE', VVV: 'VVV', SOL: 'SOL',
+      MRNA: 'xyz:MRNA', ANT: 'xyz:ANT', SOXL: 'xyz:SOXL', MU: 'xyz:MU',
+      AMD: 'xyz:AMD', AVGO: 'xyz:AVGO', TSM: 'xyz:TSM', SKHYNIX: 'xyz:SKHX', NVDA: 'xyz:NVDA'
+    };
+    return map[id] || (live['xyz:' + id] ? 'xyz:' + id : id);
+  }
+
+  function readHandoff() {
+    const q = new URLSearchParams(location.search);
+    let raw = null;
+    try {
+      const s = localStorage.getItem(HANDOFF_KEY);
+      if (s) raw = JSON.parse(s);
+    } catch (e) { raw = null; }
+    if (q.get('from') !== 'calc' && !raw) return null;
+    raw = raw || {};
+    const coinId = mapDemoCoin(q.get('coin') || raw.demoCoin || raw.coin);
+    if (!coinId || !live[coinId]) return raw.side || q.get('side') ? { coin: coinId } : null;
+    const typ = q.get('tab') || raw.typ || raw.tab;
+    const entry = q.get('entry') || raw.entry || raw.limit;
+    let tabName = typ === 'limit' ? 'limit' : (typ === 'market' ? 'market' : null);
+    const px = lastPx(coinId);
+    if (!tabName && entry && px && Math.abs(+entry - px) / px > 0.0005) tabName = 'limit';
+    if (!tabName) tabName = 'market';
+    const margin = q.get('margin') != null && q.get('margin') !== '' ? q.get('margin') : raw.margin;
+    const lev = q.get('lev') != null && q.get('lev') !== '' ? q.get('lev') : (raw.lev || raw.leverage);
+    const tp = q.get('tp') != null && q.get('tp') !== '' ? q.get('tp') : raw.tp;
+    const sl = q.get('sl') != null && q.get('sl') !== '' ? q.get('sl') : raw.sl;
+    return {
+      coin: coinId,
+      side: q.get('side') || raw.side,
+      sizeMode: 'margin',
+      size: margin,
+      lev: lev,
+      tab: tabName,
+      limit: tabName === 'limit' ? (raw.limit || entry) : null,
+      tp: tp, sl: sl,
+      tpslOn: !!(+tp || +sl)
+    };
+  }
+
+  async function consumeHandoff() {
+    const o = readHandoff();
+    if (!o || (!o.coin && !o.side && o.size == null)) return false;
+    try { localStorage.removeItem(HANDOFF_KEY); } catch (e) { /* */ }
+    try {
+      const url = new URL(location.href);
+      if (url.search) history.replaceState({}, '', url.pathname + (url.hash || '#trade'));
+    } catch (e) { /* */ }
+    if (o.coin && live[o.coin]) {
+      ui.layout = 1;
+      persistUi();
+      if (!panes.length) rebuildGrid();
+      await setPaneMarket(0, o.coin);
+    }
+    applyTicket(o);
+    toast('Paper demo ready — confirm the order to open.');
+    if (isMob()) {
+      setMobView('asset');
+      openMobTicket();
+    }
+    return true;
+  }
+
+  function syncMobClass() {
+    document.body.classList.toggle('is-mob', isMob());
+    if (!isMob()) {
+      document.body.classList.remove('mob-markets', 'mob-asset', 'mob-positions', 'mob-portfolio', 'mob-ticket');
+      const mk = $('#mobMarkets'); if (mk) mk.hidden = true;
+      closeMobTicket();
+      return;
+    }
+    applyMobView();
+  }
+
+  function setMobView(v) {
+    if (v !== 'asset') closeMobTicket();
+    mobView = v || 'markets';
+    if (mobView === 'portfolio') setView('portfolio');
+    else if (ui.view === 'portfolio') setView('trade');
+    applyMobView();
+    if (mobView === 'asset') {
+      requestAnimationFrame(function () { sizeAll(); panes.forEach(renderOverlay); });
+    }
+  }
+
+  function applyMobView() {
+    if (!isMob()) {
+      document.body.classList.toggle('is-mob', false);
+      return;
+    }
+    document.body.classList.add('is-mob');
+    document.body.classList.toggle('mob-markets', mobView === 'markets');
+    document.body.classList.toggle('mob-asset', mobView === 'asset');
+    document.body.classList.toggle('mob-positions', mobView === 'positions');
+    document.body.classList.toggle('mob-portfolio', mobView === 'portfolio');
+    $$('#mobTabBar [data-mob]').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-mob') === mobView);
+    });
+    const mk = $('#mobMarkets');
+    if (mk) mk.hidden = mobView !== 'markets';
+    syncMobChrome();
+  }
+
+  function dayChg(id) {
+    const px = lastPx(id), x = L(id);
+    if (!(px > 0) || !(x && x.prevDay > 0)) return null;
+    return ((px / x.prevDay) - 1) * 100;
+  }
+
+  function logoHtml(id, cls) {
+    const src = M.logoPath ? M.logoPath(id) : '';
+    const letter = M.shortName(id).charAt(0);
+    if (src) return '<img class="' + (cls || 'mob-logo') + '" src="' + src + '" alt="">';
+    return '<span class="' + (cls || 'mob-logo') + ' ph">' + letter + '</span>';
+  }
+
+  function renderMobMarkets() {
+    const list = $('#mobMktList'); if (!list) return;
+    let html = '';
+    M.CATALOG.forEach(function (m) {
+      if (mobFilter === 'crypto' && m.kind !== 'crypto') return;
+      if (mobFilter === 'stock' && m.kind === 'crypto') return;
+      const px = lastPx(m.id), x = L(m.id), chg = dayChg(m.id);
+      const chgTxt = chg == null ? '—' : ((chg > 0 ? '+' : '') + chg.toFixed(2) + '%');
+      html += '<button type="button" class="mob-mkt-row" data-coin="' + m.id + '">' +
+        logoHtml(m.id) +
+        '<div class="mob-mkt-id"><b>' + m.short + '</b><span>' + m.name + '</span></div>' +
+        '<span class="mob-lev-badge">' + (x.maxLeverage || '') + 'x</span>' +
+        '<div class="mob-mkt-px"><b>' + fmtPx(px, m.id) + '</b><span class="' + (chg == null ? '' : clsPnL(chg)) + '">' + chgTxt + '</span></div>' +
+        '</button>';
+    });
+    list.innerHTML = html || '<div class="mob-empty">No markets</div>';
+  }
+
+  function renderMobAssetHead() {
+    const c = coin(), x = L(c), px = lastPx(c), chg = dayChg(c);
+    const name = $('#mobAssetName'); if (name) name.textContent = M.shortName(c);
+    const logo = $('#mobAssetLogo');
+    if (logo) {
+      const src = M.logoPath ? M.logoPath(c) : '';
+      if (src) { logo.src = src; logo.hidden = false; }
+      else { logo.removeAttribute('src'); logo.hidden = true; }
+    }
+    const meta = $('#mobAssetMeta');
+    if (meta) {
+      const fund = x && x.funding != null ? ((x.funding * 100).toFixed(4) + '%') : '—';
+      const oi = x && x.oi > 0 ? fmtUsd(x.oi, 0) : '';
+      meta.textContent = (x.maxLeverage || '') + 'x · Fund ' + fund + (oi ? ' · OI ' + oi : '');
+    }
+    const pxEl = $('#mobAssetPx'); if (pxEl) pxEl.textContent = fmtPx(px, c);
+    const chgEl = $('#mobAssetChg');
+    if (chgEl) {
+      chgEl.textContent = chg == null ? '—' : ((chg > 0 ? '+' : '') + chg.toFixed(2) + '%');
+      chgEl.className = 'mob-asset-chg' + (chg == null ? '' : ' ' + clsPnL(chg));
+    }
+  }
+
+  function renderMobPosCard() {
+    const el = $('#mobPosCard'); if (!el) return;
+    const c = coin();
+    const list = (book.positions || []).filter(function (p) { return p.coin === c; });
+    if (!list.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = list.map(function (p) {
+      const mark = lastPx(p.coin);
+      const u = C.unrealized(p.side, p.entry, mark, p.qty);
+      const roe = C.roePct(u - (p.openFee || 0), p.margin);
+      return '<div class="mob-pos">' +
+        '<div class="mob-pos-h"><span class="side-pill ' + p.side + '">' + p.side.toUpperCase() + '</span>' +
+        '<b>' + M.shortName(p.coin) + '</b><span>' + (p.marginMode || 'cross') + ' ' + (p.leverage || '') + 'x</span></div>' +
+        '<div class="mob-pos-grid">' +
+        '<div><span>Size</span><b>' + fmtQtyLabel(p.qty, p.coin) + '</b></div>' +
+        '<div><span>Entry</span><b>' + fmtPx(p.entry, p.coin) + '</b></div>' +
+        '<div><span>Mark</span><b>' + fmtPx(mark, p.coin) + '</b></div>' +
+        '<div><span>Liq</span><b>' + (p.liq ? fmtPx(p.liq, p.coin) : '—') + '</b></div>' +
+        '<div><span>TP / SL</span><b>' + (p.tp ? fmtPx(p.tp, p.coin) : '—') + ' / ' + (p.sl ? fmtPx(p.sl, p.coin) : '—') + '</b></div>' +
+        '<div><span>PnL</span><b class="' + clsPnL(u) + '">' + fmtPnlUsd(u) + ' · ' + (roe >= 0 ? '+' : '') + (isFinite(roe) ? roe.toFixed(2) : '0.00') + '%</b></div>' +
+        '</div>' +
+        '<button type="button" class="mob-pos-close" data-close="' + p.id + '">Close position</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function syncMobAccount() {
+    const m = marksMap();
+    const upnl = B.upnlTotal(book, m);
+    const bal = $('#mobBal'); if (bal) bal.textContent = fmtUsd(book.balance);
+    const pn = $('#mobUpnl');
+    if (pn) { pn.textContent = signedUsd(upnl); pn.className = 'mob-bal-pnl ' + clsPnL(upnl); }
+  }
+
+  function syncMobChrome() {
+    if (!isMob() && !document.body.classList.contains('is-mob')) return;
+    renderMobMarkets();
+    renderMobAssetHead();
+    renderMobPosCard();
+    syncMobAccount();
+    const tpsl = $('#inpTpslOn');
+    const add = $('#mobAddTpsl');
+    if (add && tpsl) add.textContent = tpsl.checked ? 'TP / SL on' : 'Add TP/SL +';
+  }
+
+  function openMobTicket() {
+    if (!isMob()) return;
+    document.body.classList.add('mob-ticket');
+    const scrim = $('#mobTicketScrim'); if (scrim) scrim.hidden = false;
+    mobPadFresh = true;
+    syncTicketHeader(); showTicketFields(); updateCalc();
+  }
+
+  function closeMobTicket() {
+    document.body.classList.remove('mob-ticket');
+    const scrim = $('#mobTicketScrim'); if (scrim) scrim.hidden = true;
+  }
+
+  function onTicketPlaced() {
+    if (isMob()) closeMobTicket();
+  }
+
+  function mobPadKey(k) {
+    const inp = $('#inpSize'); if (!inp) return;
+    let v = mobPadFresh ? '' : String(inp.value || '');
+    mobPadFresh = false;
+    if (k === 'del') v = v.slice(0, -1);
+    else if (k === '.') { if (v.indexOf('.') < 0) v = (v || '0') + '.'; }
+    else v += k;
+    sizeSource = 'input';
+    inp.value = v;
+    updateCalc();
+  }
+
+  function bindMob() {
+    $$('#mobFilter [data-filter]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        mobFilter = b.getAttribute('data-filter');
+        $$('#mobFilter [data-filter]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        renderMobMarkets();
+      });
+    });
+    const list = $('#mobMktList');
+    if (list) list.addEventListener('click', function (ev) {
+      const row = ev.target.closest && ev.target.closest('[data-coin]');
+      if (!row) return;
+      setPaneMarket(0, row.getAttribute('data-coin')).then(function () {
+        setMobView('asset');
+      });
+    });
+    const back = $('#mobBack');
+    if (back) back.onclick = function () { closeMobTicket(); setMobView('markets'); };
+    const longB = $('#mobBtnLong');
+    if (longB) longB.onclick = function () { applyTicket({ side: 'long' }); openMobTicket(); };
+    const shortB = $('#mobBtnShort');
+    if (shortB) shortB.onclick = function () { applyTicket({ side: 'short' }); openMobTicket(); };
+    const closeT = $('#mobTicketClose');
+    if (closeT) closeT.onclick = closeMobTicket;
+    const scrim = $('#mobTicketScrim');
+    if (scrim) scrim.onclick = closeMobTicket;
+    $$('#mobTabBar [data-mob]').forEach(function (b) {
+      b.addEventListener('click', function () { setMobView(b.getAttribute('data-mob')); });
+    });
+    const dep = $('#mobDeposit');
+    if (dep) dep.onclick = function () { const r = $('#btnReset'); if (r) r.click(); };
+    const gear = $('#mobGear');
+    if (gear) gear.onclick = function () { const s = $('#btnSettings'); if (s) s.click(); };
+    const cgear = $('#mobChartGear');
+    if (cgear) cgear.onclick = function () {
+      const d = $('#mobLineSheet');
+      if (!d) return;
+      ['entry', 'tp', 'sl', 'liq'].forEach(function (k) {
+        const box = $('#mobLine_' + k);
+        if (box) box.checked = !ui.chartLines || ui.chartLines[k] !== false;
+      });
+      d.showModal();
+    };
+    const lineClose = $('#mobLineClose');
+    if (lineClose) lineClose.onclick = function () { const d = $('#mobLineSheet'); if (d) d.close(); };
+    ['entry', 'tp', 'sl', 'liq'].forEach(function (k) {
+      const box = $('#mobLine_' + k);
+      if (!box) return;
+      box.addEventListener('change', function () {
+        if (!ui.chartLines) ui.chartLines = { entry: true, tp: true, sl: true, liq: true };
+        ui.chartLines[k] = box.checked;
+        persistUi();
+        panes.forEach(renderOverlay);
+      });
+    });
+    $$('#mobSizePills [data-pct]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        applySizePct(+b.getAttribute('data-pct'));
+        mobPadFresh = true;
+      });
+    });
+    const pad = $('#mobPad');
+    if (pad) pad.addEventListener('click', function (ev) {
+      const b = ev.target.closest && ev.target.closest('[data-key]');
+      if (b) mobPadKey(b.getAttribute('data-key'));
+    });
+    const lev = $('#mobLevRange');
+    if (lev) lev.addEventListener('input', function () {
+      const maxL = L(coin()).maxLeverage || 40;
+      leverage = Math.max(1, Math.min(+lev.value || 1, maxL));
+      syncTicketHeader(); refreshSizeSlider('lev'); updateCalc();
+    });
+    const add = $('#mobAddTpsl');
+    if (add) add.onclick = function () {
+      const box = $('#inpTpslOn');
+      if (box) box.checked = true;
+      const body = $('#tpslBody'); if (body) body.hidden = false;
+      add.textContent = 'TP / SL on';
+      showTicketFields(); updateCalc();
+    };
+    if (typeof MOB_MQ.addEventListener === 'function') MOB_MQ.addEventListener('change', syncMobClass);
+    else if (MOB_MQ.addListener) MOB_MQ.addListener(syncMobClass);
+  }
+
   async function init() {
     try { bind(); } catch (e) { console.error('bind', e); }
     try { showTicketFields(); } catch (e) { console.error('ticket', e); }
@@ -1339,6 +1730,20 @@
     try { renderAll(); } catch (e) { /* */ }
     try { connect(); } catch (e) { console.error('ws', e); setFeed('WS error', 'warn'); }
     try { startPoll(); } catch (e) { console.error('poll', e); }
+    let handed = false;
+    try { handed = await consumeHandoff(); } catch (e) { console.error('handoff', e); }
+    try {
+      bindMob();
+      if (isMob() && !handed) {
+        if (location.hash === '#portfolio') setMobView('portfolio');
+        else if (location.hash === '#trade') setMobView('asset');
+        else setMobView('markets');
+      } else if (isMob()) {
+        /* handoff already opened the asset ticket */
+      } else {
+        syncMobClass();
+      }
+    } catch (e) { console.error('mob', e); }
   }
 
   window.DemoDesk = {
@@ -1358,15 +1763,7 @@
       showTicketFields(); placeTicket();
     },
     resetSilent: function () { book = B.defaultBook(); persist(); renderAll(); },
-    setForm: function (o) {
-      if (o.side) { side = o.side; $('#btnLong').classList.toggle('on', side === 'long'); $('#btnShort').classList.toggle('on', side === 'short'); }
-      if (o.size != null) { sizeSource = 'input'; $('#inpSize').value = o.size; }
-      if (o.lev != null) leverage = o.lev;
-      if (o.tp != null) $('#inpTpPx').value = o.tp;
-      if (o.sl != null) $('#inpSlPx').value = o.sl;
-      if (o.limit != null) { tab = 'limit'; $('#inpLimit').value = o.limit; }
-      syncTicketHeader(); showTicketFields(); updateCalc();
-    },
+    setForm: function (o) { applyTicket(o); },
     setView: setView,
     candleCount: function (i) {
       const p = panes[i || 0];

@@ -24,7 +24,15 @@
     { id: 'xyz:ANT', dex: 'xyz', short: 'ANT', name: 'Anthropic', kind: 'preipo' },
     { id: 'BTC', dex: '', short: 'BTC', name: 'Bitcoin', kind: 'crypto' },
     { id: 'SOL', dex: '', short: 'SOL', name: 'Solana', kind: 'crypto' },
-    { id: 'HYPE', dex: '', short: 'HYPE', name: 'HYPE', kind: 'crypto' }
+    { id: 'HYPE', dex: '', short: 'HYPE', name: 'HYPE', kind: 'crypto' },
+    { id: 'VVV', dex: '', short: 'VVV', name: 'VVV', kind: 'crypto' },
+    { id: 'xyz:AMD', dex: 'xyz', short: 'AMD', name: 'AMD', kind: 'stock' },
+    { id: 'xyz:MU', dex: 'xyz', short: 'MU', name: 'Micron', kind: 'stock' },
+    { id: 'xyz:AVGO', dex: 'xyz', short: 'AVGO', name: 'Broadcom', kind: 'stock' },
+    { id: 'xyz:TSM', dex: 'xyz', short: 'TSM', name: 'TSMC', kind: 'stock' },
+    { id: 'xyz:SKHX', dex: 'xyz', short: 'SKHYNIX', name: 'SK Hynix', kind: 'stock' },
+    { id: 'xyz:SOXL', dex: 'xyz', short: 'SOXL', name: 'Direxion SOXL', kind: 'stock' },
+    { id: 'xyz:MRNA', dex: 'xyz', short: 'MRNA', name: 'Moderna', kind: 'stock' }
   ];
 
   const FALLBACK = {
@@ -77,6 +85,46 @@
       maxLeverage: 10, szDecimals: 2,
       marginTiers: [{ lowerBound: 0, maxLeverage: 10 }, { lowerBound: 20000000, maxLeverage: 5 }],
       growthMode: false, deployerFeeScale: 0
+    },
+    VVV: {
+      maxLeverage: 3, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 3 }],
+      growthMode: false, deployerFeeScale: 0
+    },
+    'xyz:AMD': {
+      maxLeverage: 10, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:MU': {
+      maxLeverage: 10, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:AVGO': {
+      maxLeverage: 10, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:TSM': {
+      maxLeverage: 10, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:SKHX': {
+      maxLeverage: 10, szDecimals: 3,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:SOXL': {
+      maxLeverage: 10, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
+    },
+    'xyz:MRNA': {
+      maxLeverage: 10, szDecimals: 2,
+      marginTiers: [{ lowerBound: 0, maxLeverage: 10 }],
+      growthMode: true, deployerFeeScale: 1
     }
   };
 
@@ -306,12 +354,20 @@
   }
 
   const DEFAULT_TF = '1m';
-  const TIMEFRAMES = ['1s', '15s', '30s', '1m', '5m', '15m', '1h', '4h', '1d'];
+  const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
   const TF_SECONDS = { '1s': 1, '15s': 15, '30s': 30, '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
   const SUB_MINUTE = { '1s': 1, '15s': 15, '30s': 30 };
   const TF_LOOKBACK_MS = { '1m': 12 * 3600e3, '5m': 2 * 86400e3, '15m': 5 * 86400e3, '1h': 14 * 86400e3, '4h': 60 * 86400e3, '1d': 200 * 86400e3 };
 
   function isSubMinute(tf) { return !!SUB_MINUTE[tf]; }
+  function tfLabel(tf) { return tf === '1d' ? '1D' : String(tf || ''); }
+  function normalizeTf(tf) { return TIMEFRAMES.indexOf(tf) >= 0 ? tf : DEFAULT_TF; }
+  function logoPath(id) {
+    const short = shortName(id);
+    const file = short === 'SKHX' ? 'SKHYNIX' : short;
+    const known = ['BTC','HYPE','VVV','SOL','NVDA','AMD','MU','TSM','AVGO','SOXL','MRNA','ANT','SKHYNIX'];
+    return known.indexOf(file) >= 0 ? ('calc/logos/' + file + '.png') : '';
+  }
   function tfSeconds(tf) { return TF_SECONDS[tf] || 60; }
 
   // Build / update OHLC bars from a trade. Mutates bars (sorted ascending by time).
@@ -348,7 +404,7 @@
   return {
     TZ, TZ_OFFSET_SEC, START_BALANCE, BASE_TAKER, BASE_MAKER, FUNDING_INTERVAL_SEC,
     DEFAULT_TF, TIMEFRAMES, TF_SECONDS, SUB_MINUTE, TF_LOOKBACK_MS,
-    isSubMinute, tfSeconds, aggregateTradeBar, seedBarsFromTrades,
+    isSubMinute, tfLabel, normalizeTf, logoPath, tfSeconds, aggregateTradeBar, seedBarsFromTrades,
     CATALOG, FALLBACK,
     byId, shortName, displayName, isHip3, dexOf,
     hip3FeeMultiplier, feeRates, feeRatesFor, feeNote,

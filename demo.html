@@ -11,8 +11,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2322d3ee'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2305070d'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123a">
-<link rel="stylesheet" href="demo.css?v=20261123a">
+<link rel="stylesheet" href="style.css?v=20261123c">
+<link rel="stylesheet" href="demo.css?v=20261123c">
 </head>
 <body class="demo-page">
 <div class="bg-grid" aria-hidden="true"></div>
@@ -24,7 +24,7 @@
     <div class="logo"><span></span></div>
     <div>
       <h1><span class="glitch" data-text="DEMO · PAPER">DEMO · PAPER</span></h1>
-      <div class="sub"><span class="sess">session <b>demo-desk</b></span> · Hyperliquid perps · <b class="paper-tag">PAPER ONLY · $1M</b> · times <b>UTC+5</b> · <span class="build-tag" id="buildTag" title="Page build">build 20261123a</span></div>
+      <div class="sub"><span class="sess">session <b>demo-desk</b></span> · Hyperliquid perps · <b class="paper-tag">PAPER ONLY · $1M</b> · times <b>UTC+5</b> · <span class="build-tag" id="buildTag" title="Page build">build 20261123c</span></div>
     </div>
   </div>
   <nav class="nav">
@@ -50,9 +50,43 @@
   </div>
 </header>
 
+
+<div id="mobMarkets" class="mob-screen" hidden>
+  <header class="mob-top">
+    <div>
+      <div class="mob-bal-amt" id="mobBal">$1,000,000.00</div>
+      <div class="mob-bal-pnl" id="mobUpnl">$0.00</div>
+    </div>
+    <div class="mob-top-actions">
+      <button type="button" class="mob-pill-btn" id="mobDeposit">Deposit</button>
+      <button type="button" class="mob-icon-btn" id="mobGear" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+  <div class="mob-filter" id="mobFilter" role="tablist">
+    <button type="button" data-filter="all" class="on">All</button>
+    <button type="button" data-filter="crypto">Crypto</button>
+    <button type="button" data-filter="stock">Stocks</button>
+  </div>
+  <div id="mobMktList" class="mob-mkt-list"></div>
+</div>
+
 <section class="mkt-bar" id="mktBar" aria-label="Markets"></section>
 
 <div id="tradeView">
+
+  <header id="mobAssetHead" class="mob-asset-head">
+    <button type="button" class="mob-icon-btn" id="mobBack" aria-label="Back">←</button>
+    <img id="mobAssetLogo" class="mob-logo sm" alt="" hidden>
+    <div class="mob-asset-id">
+      <div id="mobAssetName">—</div>
+      <div id="mobAssetMeta" class="mob-asset-meta">—</div>
+    </div>
+    <div class="mob-asset-pxs">
+      <b id="mobAssetPx">—</b>
+      <span id="mobAssetChg" class="mob-asset-chg">—</span>
+    </div>
+    <button type="button" class="mob-icon-btn" id="mobChartGear" aria-label="Chart lines">☰</button>
+  </header>
 <main class="demo-layout" id="demoLayout">
   <section class="panel focus" id="focusPanel">
     <div class="panel-head">
@@ -81,6 +115,7 @@
     <div class="panel-head">
       <div class="ph-title" id="ticketTitle">◈ ORDER</div>
       <button type="button" class="paper-badge" id="btnAcctMode" title="Change account abstraction mode">Unified</button>
+      <button type="button" class="mob-only mob-icon-btn" id="mobTicketClose" aria-label="Close order">×</button>
     </div>
     <form class="ticket-body" id="orderForm" autocomplete="off" onsubmit="return false">
       <div class="seg" role="group" aria-label="Margin mode">
@@ -201,6 +236,26 @@
         <div class="sc-wrap"><table class="sc-table" id="scTable"><thead><tr><th>Move</th><th>Price</th><th>P&amp;L</th><th>ROE</th></tr></thead><tbody></tbody></table></div>
       </div>
 
+
+      <div class="mob-only" id="mobTicketExtras">
+        <label class="mob-lev-row">Leverage <b id="mobLevLab">10x</b>
+          <input type="range" id="mobLevRange" min="1" max="40" step="1" value="10">
+        </label>
+        <div class="mob-liq-row">Est. liquidation <b id="mobEstLiq">—</b></div>
+        <button type="button" class="mob-add-tpsl" id="mobAddTpsl">Add TP/SL +</button>
+        <div class="mob-size-pills" id="mobSizePills">
+          <button type="button" data-pct="25">25%</button>
+          <button type="button" data-pct="50">50%</button>
+          <button type="button" data-pct="75">75%</button>
+          <button type="button" data-pct="100">Max</button>
+        </div>
+        <div class="mob-pad" id="mobPad">
+          <button type="button" data-key="1">1</button><button type="button" data-key="2">2</button><button type="button" data-key="3">3</button>
+          <button type="button" data-key="4">4</button><button type="button" data-key="5">5</button><button type="button" data-key="6">6</button>
+          <button type="button" data-key="7">7</button><button type="button" data-key="8">8</button><button type="button" data-key="9">9</button>
+          <button type="button" data-key=".">.</button><button type="button" data-key="0">0</button><button type="button" data-key="del">⌫</button>
+        </div>
+      </div>
       <p class="err" id="orderErr" hidden></p>
       <button type="button" class="go" id="btnOpen">Buy / Long</button>
     </form>
@@ -242,6 +297,12 @@
     </table>
   </div>
 </section>
+
+  <div id="mobPosCard" class="mob-pos-card" hidden></div>
+  <footer id="mobTradeBar" class="mob-trade-bar">
+    <button type="button" id="mobBtnLong" class="mob-long">Long</button>
+    <button type="button" id="mobBtnShort" class="mob-short">Short</button>
+  </footer>
 </div>
 
 <div id="portfolioView" hidden></div>
@@ -308,14 +369,36 @@
   </div>
 </dialog>
 
+
+<nav id="mobTabBar" class="mob-tabbar" aria-label="Demo navigation">
+  <button type="button" data-mob="markets" class="on">Markets</button>
+  <button type="button" data-mob="asset">Trade</button>
+  <button type="button" data-mob="positions">Positions</button>
+  <button type="button" data-mob="portfolio">Portfolio</button>
+</nav>
+<div id="mobTicketScrim" class="mob-scrim" hidden></div>
+<dialog class="demo-modal" id="mobLineSheet">
+  <form method="dialog" class="modal-card" onsubmit="return false">
+    <h3>Chart lines</h3>
+    <p class="modal-sub">Show these on the chart when you have a position.</p>
+    <label class="chk"><input type="checkbox" id="mobLine_entry" checked> Entry + live PnL</label>
+    <label class="chk"><input type="checkbox" id="mobLine_tp" checked> Take profit</label>
+    <label class="chk"><input type="checkbox" id="mobLine_sl" checked> Stop loss</label>
+    <label class="chk"><input type="checkbox" id="mobLine_liq" checked> Liquidation</label>
+    <div class="modal-actions">
+      <button type="button" class="mini-btn" id="mobLineClose">Done</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-<script src="js/demo-calc.js?v=20261123a"></script>
-<script src="js/demo-markets.js?v=20261123a"></script>
-<script src="js/demo-book.js?v=20261123a"></script>
-<script src="js/demo-draw.js?v=20261123a"></script>
-<script src="js/demo-portfolio.js?v=20261123a"></script>
-<script src="js/demo.js?v=20261123a"></script>
+<script src="js/demo-calc.js?v=20261123c"></script>
+<script src="js/demo-markets.js?v=20261123c"></script>
+<script src="js/demo-book.js?v=20261123c"></script>
+<script src="js/demo-draw.js?v=20261123c"></script>
+<script src="js/demo-portfolio.js?v=20261123c"></script>
+<script src="js/demo.js?v=20261123c"></script>
 </body>
 </html>

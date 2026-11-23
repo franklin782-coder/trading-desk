@@ -261,7 +261,17 @@ assert(Array.isArray(sanitized.pending) && sanitized.positions.length === 1, 'ma
 });
 assert(M.FALLBACK['xyz:NVDA'].maxLeverage === 10 && M.FALLBACK['xyz:AAPL'].maxLeverage === 20, 'NVDA 10x / AAPL 20x fallbacks');
 assert(M.FALLBACK['xyz:TSLA'].maxLeverage === 20 && M.FALLBACK['xyz:SPCX'].maxLeverage === 20 && M.FALLBACK['xyz:ANT'].maxLeverage === 10, 'TSLA/SPCX 20x, ANT 10x fallbacks');
-assert(M.CATALOG.length === 10, 'catalog has 10 markets, got ' + M.CATALOG.length);
+assert(M.CATALOG.length === 18, 'catalog has 18 markets, got ' + M.CATALOG.length);
+['VVV','xyz:AMD','xyz:MU','xyz:AVGO','xyz:TSM','xyz:SKHX','xyz:SOXL','xyz:MRNA'].forEach(function (id) {
+  assert(M.byId(id), id + ' is in the catalog');
+});
+assert(M.FALLBACK.VVV.maxLeverage === 3, 'VVV 3x fallback');
+assert(M.FALLBACK['xyz:AMD'].maxLeverage === 10, 'AMD 10x fallback');
+assert(M.TIMEFRAMES.join(',') === '1m,5m,15m,1h,4h,1d', 'timeframes start at 1m');
+assert(M.tfLabel('1d') === '1D' && M.tfLabel('1h') === '1h', '1d label is 1D');
+assert(M.normalizeTf('1s') === '1m' && M.normalizeTf('15m') === '15m', 'unknown TFs normalize to 1m');
+assert(M.logoPath('BTC') === 'calc/logos/BTC.png' && M.logoPath('xyz:SKHX') === 'calc/logos/SKHYNIX.png', 'logo paths');
+
 
 if (failed) { console.error('\n' + failed + ' failed'); process.exit(1); }
 console.log('\nall tests passed');
