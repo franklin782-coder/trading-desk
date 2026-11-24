@@ -3118,7 +3118,7 @@
       if (d.type === 'hline') {
         const y = yAt(d.price);
         if (y == null) return;
-        svg += '<line x1="0" y1="' + y + '" x2="' + (w - 48) + '" y2="' + y + '" stroke="' + col + '" stroke-width="' + thick + '" stroke-dasharray="4 3"/>';
+        svg += '<line x1="0" y1="' + y + '" x2="' + (w - 48) + '" y2="' + y + '" stroke="' + col + '" stroke-width="' + thick + '"/>';
       } else if (d.type === 'trend') {
         const x1 = xAtTime(d.t1), y1 = yAt(d.p1), x2 = xAtTime(d.t2), y2 = yAt(d.p2);
         if (x1 == null || y1 == null || x2 == null || y2 == null) return;
