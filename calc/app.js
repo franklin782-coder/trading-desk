@@ -106,7 +106,7 @@
   let marginDraft = null;
   let chart = null, series = null, ws = null, wsCoin = '', wsTf = '', bars = [];
   let wsKind = '', wsKey = '', lastTickAt = 0, liveRaf = 0, pendingTick = null, wsRetry = 0;
-  let drawTool = 'cursor', drawColor = '#3b8aff', drawings = {}, selectedDraw = null;
+  let drawTool = 'cursor', drawColor = '#3b8aff', drawings = {}, selectedDraw = null, drawUndo = {};
   let measure = null, crosshair = null, longPressTimer = 0, chartPanOff = false, pendingTrend = null;
   let histLoading = false, histEOF = false, histGen = 0;
   let obRaw = { bids: [], asks: [] }, tape = [], obGroup = 0, obTab = 'book', obRaf = 0, obSteps = [];
@@ -278,6 +278,235 @@
     if (!isFinite(p) || Math.abs(p) < 0.0000001) return 'chg flat';
     return p > 0 ? 'chg up' : 'chg dn';
   }
+
+  const NY_TZ = 'America/New_York';
+  const NYSE_HOLIDAYS = {
+    '2025-01-01': 1, '2025-01-20': 1, '2025-02-17': 1, '2025-04-18': 1, '2025-05-26': 1,
+    '2025-06-19': 1, '2025-07-04': 1, '2025-09-01': 1, '2025-11-27': 1, '2025-12-25': 1,
+    '2026-01-01': 1, '2026-01-19': 1, '2026-02-16': 1, '2026-04-03': 1, '2026-05-25': 1,
+    '2026-06-19': 1, '2026-07-03': 1, '2026-09-07': 1, '2026-11-26': 1, '2026-12-25': 1,
+    '2027-01-01': 1, '2027-01-18': 1, '2027-02-15': 1, '2027-03-26': 1, '2027-05-31': 1,
+    '2027-06-18': 1, '2027-07-05': 1, '2027-09-06': 1, '2027-11-25': 1, '2027-12-24': 1
+  };
+  const nyPartFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: NY_TZ, weekday: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23'
+  });
+  function nyParts(ms) {
+    const o = {};
+    nyPartFmt.formatToParts(new Date(ms)).forEach(function (p) {
+      if (p.type !== 'literal') o[p.type] = p.value;
+    });
+    return {
+      year: +o.year, month: +o.month, day: +o.day,
+      hour: +o.hour, minute: +o.minute, second: +o.second,
+      weekday: o.weekday,
+      ymd: o.year + '-' + o.month + '-' + o.day
+    };
+  }
+  function etToUtcMs(y, mo, d, h, mi) {
+    const utc = Date.UTC(y, mo - 1, d, h, mi, 0);
+    const p = nyParts(utc);
+    const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    return utc - (asUtc - utc);
+  }
+  function isNyseTradingDay(ymd, weekday) {
+    if (weekday === 'Sat' || weekday === 'Sun') return false;
+    return !NYSE_HOLIDAYS[ymd];
+  }
+  function nextPreMarketAfter(now) {
+    const p = nyParts(now);
+    const noon0 = etToUtcMs(p.year, p.month, p.day, 12, 0);
+    for (let i = 0; i < 16; i++) {
+      const dp = nyParts(noon0 + i * 86400e3);
+      if (!isNyseTradingDay(dp.ymd, dp.weekday)) continue;
+      const pre = etToUtcMs(dp.year, dp.month, dp.day, 4, 0);
+      if (pre > now) return pre;
+    }
+    return now + 86400e3;
+  }
+  function sessionInfo(now) {
+    now = now || Date.now();
+    const p = nyParts(now);
+    const trading = isNyseTradingDay(p.ymd, p.weekday);
+    const pre = etToUtcMs(p.year, p.month, p.day, 4, 0);
+    const open = etToUtcMs(p.year, p.month, p.day, 9, 30);
+    const close = etToUtcMs(p.year, p.month, p.day, 16, 0);
+    const afterEnd = etToUtcMs(p.year, p.month, p.day, 20, 0);
+    if (trading && now >= pre && now < open) return { id: 'pre', label: 'Pre-market', nextLabel: 'opens', nextAt: open };
+    if (trading && now >= open && now < close) return { id: 'open', label: 'Market open', nextLabel: 'closes', nextAt: close };
+    if (trading && now >= close && now < afterEnd) return { id: 'after', label: 'After-hours', nextLabel: 'closes', nextAt: afterEnd };
+    const nextPre = nextPreMarketAfter(now);
+    let weekend = (p.weekday === 'Sat' || p.weekday === 'Sun');
+    if (trading && now >= afterEnd && (p.weekday === 'Fri')) weekend = true;
+    if (p.weekday === 'Mon' && now < pre) weekend = true;
+    return {
+      id: weekend ? 'weekend' : 'closed',
+      label: weekend ? 'Weekend' : 'Closed',
+      nextLabel: 'pre-market',
+      nextAt: nextPre
+    };
+  }
+  function fmtCountdown(ms) {
+    if (!(ms > 0)) return '0s';
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm';
+    return sec + 's';
+  }
+  function fmtFundClock(ms) {
+    if (!(ms > 0)) return '00:00:00';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return pad(h) + ':' + pad(m) + ':' + pad(sec);
+  }
+  function fmtCompactUsd(x) {
+    if (!isFinite(x)) return '—';
+    const abs = Math.abs(x);
+    const sign = x < 0 ? '−' : '';
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(abs >= 10e12 ? 1 : 2) + 'T';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(abs >= 10e9 ? 1 : 2) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(abs >= 10e6 ? 1 : 2) + 'M';
+    if (abs >= 1e4) return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
+    return sign + '$' + Math.round(abs).toLocaleString('en-US');
+  }
+  function fmtSignedUsdPx(x) {
+    if (!isFinite(x)) return '';
+    const sign = x > 0 ? '+' : (x < 0 ? '−' : '');
+    return sign + fmtPrice(Math.abs(x), true);
+  }
+  function nextFundingAt(meta, now) {
+    now = now || Date.now();
+    if (isHl()) {
+      const hour = 3600e3;
+      return Math.floor(now / hour) * hour + hour;
+    }
+    const nft = meta && meta.nextFunding;
+    if (nft > 0) {
+      const ms = nft > 1e12 ? nft : nft * 1000;
+      if (ms > now - 2000) return ms;
+    }
+    const period = 8 * 3600e3;
+    return Math.floor(now / period) * period + period;
+  }
+  function renderSessionPill() {
+    const el = $('sessPill');
+    const lbl = $('sessLbl');
+    if (!el || !lbl) return;
+    const info = sessionInfo(Date.now());
+    el.className = 'sess-pill ' + info.id;
+    lbl.textContent = info.label + ' · ' + info.nextLabel + ' in ' + fmtCountdown(info.nextAt - Date.now());
+  }
+  function renderFundingTick() {
+    const el = $('statFund');
+    if (!el) return;
+    const meta = liveMeta[state.coin] || {};
+    const fund = meta.funding;
+    const fundTxt = (fund == null || !isFinite(fund)) ? '—' : ((fund * 100).toFixed(4) + '%');
+    el.textContent = fundTxt + '  ' + fmtFundClock(nextFundingAt(meta) - Date.now());
+    el.className = 'v' + (isFinite(fund) && fund !== 0 ? (fund > 0 ? ' up' : ' dn') : '');
+  }
+  function tickSessionClocks() {
+    renderSessionPill();
+    renderFundingTick();
+  }
+  function sessMarksAllowed() {
+    return state.tf === '1m' || state.tf === '5m' || state.tf === '15m' || state.tf === '1h';
+  }
+  function xAtTimeOrNear(tSec) {
+    let x = xAtTime(tSec);
+    if (x != null) return x;
+    if (!bars || !bars.length) return null;
+    let best = null, bestD = Infinity;
+    for (let i = 0; i < bars.length; i++) {
+      const d = Math.abs(bars[i].time - tSec);
+      if (d < bestD) { bestD = d; best = bars[i].time; }
+      if (bars[i].time > tSec && d > bestD) break;
+    }
+    if (best == null || bestD > tfSeconds(state.tf) * 2) return null;
+    return xAtTime(best);
+  }
+  function renderSessionMarks() {
+    const layer = $('sessMarks');
+    if (!layer) return;
+    if (!chart || !sessMarksAllowed()) { layer.innerHTML = ''; return; }
+    let from, to;
+    try {
+      const vr = chart.timeScale().getVisibleRange();
+      if (!vr || vr.from == null || vr.to == null) { layer.innerHTML = ''; return; }
+      from = Number(vr.from);
+      to = Number(vr.to);
+      if (from > 1e11) { from /= 1000; to /= 1000; }
+    } catch (e) { layer.innerHTML = ''; return; }
+    const host = $('chart') || layer;
+    const w = host.clientWidth || 0, h = host.clientHeight || 0;
+    if (!(w > 0 && h > 0) || !(to > from)) { layer.innerHTML = ''; return; }
+    const days = (to - from) / 86400;
+    if (days > 0 && (w / days) < 28) { layer.innerHTML = ''; return; }
+    let plotW = w;
+    try { plotW = chart.timeScale().width() || w; } catch (e) { /* */ }
+    const events = [];
+    const startMs = (from - 86400) * 1000;
+    const endMs = (to + 86400) * 1000;
+    let t = startMs;
+    while (t <= endMs) {
+      const p = nyParts(t);
+      const noon = etToUtcMs(p.year, p.month, p.day, 12, 0);
+      if (isNyseTradingDay(p.ymd, p.weekday)) {
+        events.push({ t: Math.floor(etToUtcMs(p.year, p.month, p.day, 9, 30) / 1000), kind: 'open' });
+        events.push({ t: Math.floor(etToUtcMs(p.year, p.month, p.day, 16, 0) / 1000), kind: 'close' });
+      }
+      t = noon + 86400e3;
+    }
+    let svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">';
+    const labels = [];
+    events.forEach(function (ev) {
+      if (ev.t < from - 120 || ev.t > to + 120) return;
+      const x = xAtTimeOrNear(ev.t);
+      if (x == null || x < 2 || x > plotW) return;
+      const col = ev.kind === 'open' ? 'rgba(134,232,168,.5)' : 'rgba(246,70,93,.45)';
+      svg += '<line x1="' + x.toFixed(1) + '" y1="0" x2="' + x.toFixed(1) + '" y2="' + h + '" stroke="' + col + '" stroke-width="1" stroke-dasharray="4 3"/>';
+      labels.push({
+        x: x,
+        lab: ev.kind === 'open' ? 'Open' : 'Close',
+        col: ev.kind === 'open' ? 'rgba(134,232,168,.82)' : 'rgba(246,70,93,.82)'
+      });
+    });
+    labels.sort(function (a, b) { return a.x - b.x; });
+    let lastX = -999;
+    labels.forEach(function (lb) {
+      if (lb.x < 44) return;
+      if (lb.x - lastX < 36) return;
+      lastX = lb.x;
+      svg += '<text x="' + (lb.x + 4).toFixed(1) + '" y="14" fill="' + lb.col + '" font-size="9" font-weight="700">' + lb.lab + '</text>';
+    });
+    svg += '</svg>';
+    layer.innerHTML = svg;
+  }
+  async function refreshAsterOi(symbol, id) {
+    if (!symbol) return;
+    try {
+      const r = await fetch(ASTER_API + '/openInterest?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const oi = parseFloat(j.openInterest);
+      if (oi > 0) {
+        setMeta(id || state.coin, { oi: oi });
+        if ((id || state.coin) === state.coin) renderAssetHead();
+      }
+    } catch (e) { /* keep last */ }
+  }
+
 
   function maxMarginOf(cap, lev) {
     if (!(cap > 0) || !(lev > 0)) return NaN;
@@ -520,10 +749,12 @@
       const fund = parseFloat(ctx && ctx.funding);
       const oi = parseFloat(ctx && ctx.openInterest);
       const vol = parseFloat(ctx && (ctx.dayNtlVlm || ctx.dayNtlVlM));
+      const oracle = parseFloat(ctx && ctx.oraclePx);
       const row = {
         px: px > 0 ? px : null,
         mid: mid > 0 ? mid : null,
         mark: mark > 0 ? mark : null,
+        oracle: oracle > 0 ? oracle : null,
         max: u.maxLeverage,
         prevDay: prev > 0 ? prev : null,
         funding: isFinite(fund) ? fund : null,
@@ -592,13 +823,15 @@
   }
 
   async function fetchAsterPrice(symbol) {
-    let mark = 0, fund = NaN, last = 0;
+    let mark = 0, fund = NaN, last = 0, indexPx = 0, nft = 0;
     try {
       const r = await fetch(ASTER_API + '/premiumIndex?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
       if (r.ok) {
         const j = await r.json();
         mark = parseFloat(j.markPrice);
         fund = parseFloat(j.lastFundingRate);
+        indexPx = parseFloat(j.indexPrice);
+        nft = parseFloat(j.nextFundingTime);
       }
     } catch (e) { /* try last price */ }
     try {
@@ -612,6 +845,8 @@
     const out = {};
     if (mark > 0) out.mark = mark;
     if (isFinite(fund)) out.funding = fund;
+    if (indexPx > 0) out.index = indexPx;
+    if (nft > 0) out.nextFunding = nft;
     if (last > 0) { out.trade = last; out.px = last; }
     else out.px = mark;
     return out;
@@ -632,9 +867,11 @@
         if (isFinite(pct)) dayChange[c.id] = pct;
         const last = parseFloat(row.lastPrice);
         const vol = parseFloat(row.quoteVolume || row.volume);
+        const chgAbs = parseFloat(row.priceChange);
         const patch = {};
         if (last > 0) patch.px = last;
         if (vol > 0) patch.volume = vol;
+        if (isFinite(chgAbs)) patch.changeAbs = chgAbs;
         if (Object.keys(patch).length) liveMeta[c.id] = Object.assign({}, liveMeta[c.id], patch);
       });
     } catch (e) { /* keep last */ }
@@ -724,7 +961,10 @@
       if (isHl()) await fetchHlMap(true);
       else await Promise.all([
         refreshAsterDayChange().catch(function () {}),
-        fetchHlMap(false).catch(function () {})
+        fetchHlMap(false).catch(function () {}),
+        currentCoin().aster && currentCoin().aster.symbol
+          ? refreshAsterOi(currentCoin().aster.symbol, currentCoin().id).catch(function () {})
+          : Promise.resolve()
       ]);
     } catch (e) { /* keep last */ }
     renderMarkets();
@@ -739,7 +979,7 @@
       document.querySelectorAll('#tabbar [data-view]').forEach((b) => {
         b.classList.toggle('on', b.getAttribute('data-view') === name);
       });
-      requestAnimationFrame(() => { sizeChart(); renderOverlay(); renderDrawings(); });
+      requestAnimationFrame(() => { sizeChart(); renderOverlay(); renderDrawings(); renderSessionMarks(); });
       renderPositions();
       renderAccount();
       return;
@@ -753,7 +993,7 @@
       b.classList.toggle('on', b.getAttribute('data-view') === name);
     });
     if (name === 'asset') {
-      requestAnimationFrame(() => { sizeChart(); renderOverlay(); });
+      requestAnimationFrame(() => { sizeChart(); renderOverlay(); renderSessionMarks(); });
     }
     renderPositions();
     renderAccount();
@@ -799,6 +1039,7 @@
     setView('asset');
     renderAll();
     refreshPrice({ fillEntry: true, quiet: true });
+    if (coin.aster && coin.aster.symbol && !isHl()) refreshAsterOi(coin.aster.symbol, coin.id).catch(function () {});
     loadChart();
   }
 
@@ -1004,6 +1245,7 @@
       sizeChart();
       renderOverlay();
       renderDrawings();
+      renderSessionMarks();
     });
     el._tdRo.observe(el);
   }
@@ -1188,7 +1430,7 @@
     bindChartResize();
     sizeChart();
     chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
-      renderOverlay(); renderDrawings();
+      renderOverlay(); renderDrawings(); renderSessionMarks();
       maybeLoadOlder(range);
     });
     bars = [];
@@ -1228,6 +1470,7 @@
     subscribeLive();
     renderOverlay();
     renderDrawings();
+    renderSessionMarks();
     renderLiveSrc();
     renderAssetHead();
   }
@@ -1276,7 +1519,7 @@
       } catch (e) { /* */ }
     }
     histLoading = false;
-    renderOverlay(); renderDrawings();
+    renderOverlay(); renderDrawings(); renderSessionMarks();
     /* If the user is still zoomed out against the new left edge, keep fetching. */
     try {
       const next = chart.timeScale().getVisibleLogicalRange();
@@ -1392,13 +1635,28 @@
     const logo = $('assetLogo');
     if (logo) { logo.src = logoSrc(c.id); logo.alt = c.name; }
     if ($('assetLev')) $('assetLev').textContent = levMax() + 'x';
-    const fund = meta.funding != null ? ((meta.funding * 100).toFixed(4) + '%') : '—';
-    const oi = meta.oi > 0 ? fmtUsd(meta.oi * (px || 0), false) : '';
-    const markBit = meta.mark > 0 ? 'Mark ' + fmtPrice(meta.mark, true) + ' · ' : '';
-    if ($('assetMeta')) $('assetMeta').textContent = markBit + 'Fund ' + fund + (oi ? ' · OI ' + oi : '');
+    const xyz = $('assetXyz');
+    if (xyz) xyz.hidden = !(isHl() && c.hl && c.hl.dex === 'xyz');
     if ($('assetPx')) $('assetPx').textContent = fmtPrice(px, true);
+    if ($('statMark')) $('statMark').textContent = meta.mark > 0 ? fmtPrice(meta.mark, true) : '—';
+    if ($('statOracleLab')) $('statOracleLab').textContent = isHl() ? 'Oracle' : 'Index';
+    const refPx = isHl() ? meta.oracle : meta.index;
+    if ($('statOracle')) $('statOracle').textContent = refPx > 0 ? fmtPrice(refPx, true) : '—';
     const chgEl = $('assetChg');
-    if (chgEl) { chgEl.textContent = fmtChgPct(chg); chgEl.className = chgClass(chg); }
+    if (chgEl) {
+      let abs = meta.changeAbs;
+      if (!isFinite(abs) && meta.prevDay > 0 && px > 0) abs = px - meta.prevDay;
+      const bits = [];
+      const signed = fmtSignedUsdPx(abs);
+      if (signed) bits.push(signed);
+      bits.push(fmtChgPct(chg));
+      chgEl.textContent = bits.join('  ');
+      chgEl.className = 'v ' + chgClass(chg);
+    }
+    if ($('statVol')) $('statVol').textContent = meta.volume > 0 ? fmtCompactUsd(meta.volume) : '—';
+    const mark = meta.mark > 0 ? meta.mark : px;
+    if ($('statOi')) $('statOi').textContent = meta.oi > 0 ? fmtCompactUsd(meta.oi * (mark || 0)) : '—';
+    tickSessionClocks();
   }
 
   function posHtml(p, compact) {
@@ -2044,7 +2302,22 @@
         if ($('mktSearch')) $('mktSearch').focus();
         return;
       }
+      if (!typing && (ev.ctrlKey || ev.metaKey) && ev.code === 'KeyZ' && !ev.shiftKey && !ev.altKey) {
+        ev.preventDefault();
+        undoDraw();
+        return;
+      }
+      if (ev.key === 'Shift' && !typing) {
+        if (isDesktop()) setChartInteractive(false);
+      }
       if (typing || ev.metaKey || ev.ctrlKey) return;
+      if ((ev.key === 'v' || ev.key === 'V' || ev.code === 'KeyV') && !ev.altKey) {
+        ev.preventDefault();
+        measure = null;
+        pendingTrend = null;
+        setDrawTool('cursor');
+        return;
+      }
       if (ev.altKey && !ev.shiftKey) {
         if (ev.code === 'KeyH') { ev.preventDefault(); setDrawTool('hline'); }
         else if (ev.code === 'KeyT') { ev.preventDefault(); setDrawTool('trend'); }
@@ -2061,6 +2334,15 @@
       if (ev.key === 'l' || ev.key === 'L') openOrder('long');
       else if (ev.key === 's' || ev.key === 'S') openOrder('short');
       else if (ev.key === 'c' || ev.key === 'C') setRightTab(state.rightTab === 'calc' ? 'trade' : 'calc');
+    });
+    window.addEventListener('keyup', (ev) => {
+      if (!isDesktop() || ev.key !== 'Shift') return;
+      const tag = ((ev.target && ev.target.tagName) || '').toLowerCase();
+      const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || (ev.target && ev.target.isContentEditable);
+      if (typing) return;
+      if (measure && measure.live) return;
+      if (drawTool !== 'cursor') return;
+      restoreChartInteractive();
     });
   }
 
@@ -2243,9 +2525,13 @@
       const ctx = d.ctx || d;
       const mark = parseFloat(ctx.markPx);
       const mid = parseFloat(ctx.midPx);
+      const oracle = parseFloat(ctx.oraclePx);
+      const prev = parseFloat(ctx.prevDayPx);
       const extra = {};
       if (mark > 0) extra.mark = mark;
       if (mid > 0) extra.mid = mid;
+      if (oracle > 0) extra.oracle = oracle;
+      if (prev > 0) extra.prevDay = prev;
       const fund = parseFloat(ctx.funding);
       const oi = parseFloat(ctx.openInterest);
       const vol = parseFloat(ctx.dayNtlVlm);
@@ -2253,6 +2539,10 @@
       if (oi > 0) extra.oi = oi;
       if (vol > 0) extra.volume = vol;
       setMeta(state.coin, extra);
+      if (prev > 0 && (mark > 0 || mid > 0)) {
+        const last = (mid > 0 ? mid : mark);
+        dayChange[state.coin] = ((last / prev) - 1) * 100;
+      }
       renderAssetHead();
     }
   }
@@ -2290,7 +2580,11 @@
         if (!coin) return;
         const extra = {};
         const fund = parseFloat(row.r);
+        const indexPx = parseFloat(row.i || row.indexPrice);
+        const nft = parseFloat(row.T || row.nextFundingTime);
         if (isFinite(fund)) extra.funding = fund;
+        if (indexPx > 0) extra.index = indexPx;
+        if (nft > 0) extra.nextFunding = nft;
         setMeta(coin.id, Object.assign({ mark: px }, extra));
         if (coin.id === state.coin) renderAssetHead();
       });
@@ -2304,7 +2598,11 @@
       const px = parseFloat(d.p || d.markPrice);
       const extra = {};
       const fund = parseFloat(d.r);
+      const indexPx = parseFloat(d.i || d.indexPrice);
+      const nft = parseFloat(d.T || d.nextFundingTime);
       if (isFinite(fund)) extra.funding = fund;
+      if (indexPx > 0) extra.index = indexPx;
+      if (nft > 0) extra.nextFunding = nft;
       if (px > 0) extra.mark = px;
       setMeta(state.coin, extra);
       renderAssetHead();
@@ -2859,8 +3157,25 @@
     setChartInteractive(t === 'cursor');
     renderDrawings();
   }
+  function pushDrawUndo() {
+    const id = state.coin;
+    if (!drawUndo[id]) drawUndo[id] = [];
+    drawUndo[id].push(JSON.parse(JSON.stringify(coinDraws())));
+    if (drawUndo[id].length > 40) drawUndo[id].shift();
+  }
+  function undoDraw() {
+    const id = state.coin;
+    const st = drawUndo[id];
+    if (!st || !st.length) return false;
+    drawings[id] = st.pop();
+    selectedDraw = null;
+    saveDrawings();
+    renderDrawings();
+    return true;
+  }
   function deleteSelectedDraw() {
     if (!selectedDraw) return false;
+    pushDrawUndo();
     drawings[state.coin] = coinDraws().filter((d) => d.id !== selectedDraw);
     selectedDraw = null;
     saveDrawings();
@@ -2870,6 +3185,7 @@
   function clearAllDraws() {
     if (!coinDraws().length) return;
     if (!confirm('Clear all drawings on ' + state.coin + '?')) return;
+    pushDrawUndo();
     drawings[state.coin] = [];
     selectedDraw = null;
     saveDrawings();
@@ -2907,7 +3223,7 @@
         $('toolColors').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === col));
         if (selectedDraw) {
           const d = coinDraws().find((x) => x.id === selectedDraw);
-          if (d) { d.color = drawColor; saveDrawings(); renderDrawings(); }
+          if (d && d.color !== drawColor) { pushDrawUndo(); d.color = drawColor; saveDrawings(); renderDrawings(); }
         }
         return;
       }
@@ -2995,17 +3311,19 @@
         restoreChartInteractive();
         return;
       }
-      /* Unstick a dead chart on a fresh tap before we maybe take over a long-press. */
-      if (drawTool === 'cursor') restoreChartInteractive();
       start = { x: pt.x, y: pt.y, t: Date.now(), shift: !!(ev.shiftKey && ev.pointerType !== 'touch'), btn: ev.button };
       moved = false;
       cancelLongPress();
       const useMeasure = drawTool === 'measure' || (start.shift && ev.button === 0);
+      /* Unstick a dead chart on a fresh tap, but not when we're about to steal the drag. */
+      if (drawTool === 'cursor' && !useMeasure) restoreChartInteractive();
       if (useMeasure) {
         ev.preventDefault();
+        ev.stopPropagation();
         setChartInteractive(false);
+        try { if (ev.pointerId != null) host.setPointerCapture(ev.pointerId); } catch (e) { /* */ }
         const price = priceAtY(pt.y), time = timeAtX(pt.x);
-        measure = { a: { x: pt.x, y: pt.y, price: price, time: time }, b: null };
+        measure = { a: { x: pt.x, y: pt.y, price: price, time: time }, b: null, live: true };
         renderDrawings();
         return;
       }
@@ -3030,6 +3348,14 @@
     function onMove(ev) {
       if (activePtrs.size > 1) {
         releasePinch();
+        return;
+      }
+      if (measure && measure.a && measure.live) {
+        ev.preventDefault();
+        const pt = localXY(ev, host);
+        if (start && Math.hypot(pt.x - start.x, pt.y - start.y) > 8) moved = true;
+        measure.b = { x: pt.x, y: pt.y, price: priceAtY(pt.y), time: timeAtX(pt.x) };
+        renderDrawings();
         return;
       }
       if (!start) return;
@@ -3086,10 +3412,13 @@
       cancelLongPress();
       if (measure && measure.a) {
         measure.b = { x: pt.x, y: pt.y, price: priceAtY(pt.y), time: timeAtX(pt.x) };
+        const dx = measure.b.x - measure.a.x, dy = measure.b.y - measure.a.y;
+        if (!moved && Math.hypot(dx, dy) < 6) measure = null;
+        else measure.live = false;
         start = null;
-        const keep = measure;
-        finishDrawing();
-        measure = keep;
+        try { if (ev.pointerId != null) host.releasePointerCapture(ev.pointerId); } catch (e) { /* */ }
+        if (drawTool === 'cursor' && !ev.shiftKey) restoreChartInteractive();
+        else setChartInteractive(drawTool !== 'cursor' ? false : !ev.shiftKey);
         renderDrawings();
         return;
       }
@@ -3109,6 +3438,7 @@
       if (drawTool === 'hline' && start && !moved) {
         const price = priceAtY(pt.y);
         if (price > 0) {
+          pushDrawUndo();
           coinDraws().push({ id: 'd' + Date.now(), type: 'hline', price: price, color: drawColor });
           saveDrawings();
         }
@@ -3120,6 +3450,7 @@
         if (!pendingTrend) {
           pendingTrend = { x: pt.x, y: pt.y, price: price, time: time };
         } else {
+          pushDrawUndo();
           coinDraws().push({
             id: 'd' + Date.now(), type: 'trend',
             t1: pendingTrend.time, p1: pendingTrend.price,
@@ -3134,6 +3465,13 @@
         start = null;
         return;
       } else if (drawTool === 'cursor' && start && !moved) {
+        if (measure && !measure.live) {
+          measure = null;
+          start = null;
+          renderDrawings();
+          if (drawTool === 'cursor') restoreChartInteractive();
+          return;
+        }
         const hit = hitDrawing(pt.x, pt.y);
         if (hit) {
           selectedDraw = hit.id;
@@ -3172,11 +3510,12 @@
       clearCrosshair();
     }, true);
     function onCancel(ev) {
+      if (measure && measure.live) return;
       if (ev && ev.pointerId != null) activePtrs.delete(ev.pointerId);
       activePtrs.clear();
       resetTouchState({ abort: true });
     }
-    host.addEventListener('pointerdown', onDown);
+    host.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
@@ -3308,6 +3647,8 @@
       if (!wsIsLive()) refreshPrice({ quiet: true });
       renderLiveSrc();
     }, 8000);
+    tickSessionClocks();
+    setInterval(tickSessionClocks, 1000);
   }
 
   init().catch((e) => console.error(e));

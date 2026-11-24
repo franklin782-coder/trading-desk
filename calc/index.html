@@ -9,7 +9,7 @@
   <title>Paper Trade · TP/SL</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,16 16,30 2,16' fill='%2386e8a8'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23000000'/%3E%3C/svg%3E">
   <link rel="apple-touch-icon" href="logos/BTC.png" />
-  <link rel="stylesheet" href="app.css?v=20261124c" />
+  <link rel="stylesheet" href="app.css?v=20261124d" />
 </head>
 <body>
   <div class="shell">
@@ -73,24 +73,31 @@
     <!-- Asset -->
     <section id="screenAsset" class="screen">
       <header class="asset-top">
-        <button type="button" class="icon-btn" id="btnBack" aria-label="Back">←</button>
-        <img id="assetLogo" class="logo sm" alt="" />
-        <div class="asset-id">
-          <div class="asset-name"><span id="assetName">—</span><span class="lev-badge" id="assetLev">—</span></div>
-          <div class="asset-meta" id="assetMeta">—</div>
+        <div class="asset-head">
+          <button type="button" class="icon-btn" id="btnBack" aria-label="Back">←</button>
+          <img id="assetLogo" class="logo sm" alt="" />
+          <div class="asset-id">
+            <div class="asset-name"><span id="assetName">—</span><span class="lev-badge" id="assetLev">—</span><span class="xyz-badge" id="assetXyz" hidden>xyz</span></div>
+          </div>
+          <div class="sess-pill closed" id="sessPill"><i class="sess-dot"></i><span id="sessLbl">—</span></div>
+          <button type="button" class="icon-btn" id="btnChartGear" aria-label="Chart lines">☰</button>
         </div>
-        <div class="asset-pxs">
-          <b id="assetPx">—</b>
-          <span id="assetChg" class="chg">—</span>
+        <div class="asset-stats" id="assetStats">
+          <div class="stat"><span class="k">Price</span><span class="v" id="assetPx">—</span></div>
+          <div class="stat"><span class="k">Mark</span><span class="v" id="statMark">—</span></div>
+          <div class="stat"><span class="k" id="statOracleLab">Oracle</span><span class="v" id="statOracle">—</span></div>
+          <div class="stat"><span class="k">24h Change</span><span class="v" id="assetChg">—</span></div>
+          <div class="stat"><span class="k">24h Volume</span><span class="v" id="statVol">—</span></div>
+          <div class="stat"><span class="k">Open Interest</span><span class="v" id="statOi">—</span></div>
+          <div class="stat"><span class="k">Funding</span><span class="v" id="statFund">—</span></div>
           <span class="live-src" id="liveSrc"><i class="live-dot"></i><span id="liveSrcLbl">—</span></span>
         </div>
-        <button type="button" class="icon-btn" id="btnChartGear" aria-label="Chart lines">☰</button>
       </header>
       <div class="chart-wrap" id="chartWrap">
         <div id="chartTools" class="chart-tools collapsed">
           <button type="button" class="tool-btn tool-toggle" id="toolsToggle" aria-label="Drawing tools" title="Tools">✎</button>
           <div class="tool-list" id="toolList">
-            <button type="button" class="tool-btn on" data-tool="cursor" title="Pan">✥</button>
+            <button type="button" class="tool-btn on" data-tool="cursor" title="Cursor (V) · Undo (Ctrl+Z)">✥</button>
             <button type="button" class="tool-btn" data-tool="hline" title="Horizontal line (Alt+H)">—</button>
             <button type="button" class="tool-btn" data-tool="trend" title="Trend line (Alt+T)">╱</button>
             <button type="button" class="tool-btn" data-tool="measure" title="Measure (Shift+drag)">▣</button>
@@ -100,6 +107,7 @@
           </div>
         </div>
         <div id="chart" class="chart"></div>
+        <div id="sessMarks" class="sess-marks" aria-hidden="true"></div>
         <div id="chartOverlay" class="chart-overlay"></div>
         <div id="chartDraw" class="chart-draw"></div>
         <button type="button" class="limit-pill" id="limitOrderBtn" hidden>+ Limit order</button>
@@ -291,6 +299,6 @@
 
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script type="module" src="sync.js?v=20261124a"></script>
-  <script src="app.js?v=20261124a"></script>
+  <script src="app.js?v=20261124d"></script>
 </body>
 </html>
