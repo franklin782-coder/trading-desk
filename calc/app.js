@@ -105,6 +105,7 @@
   let padFresh = true;
   let marginDraft = null;
   let chart = null, series = null, ws = null, wsCoin = '', wsTf = '', bars = [];
+  let tradeMarks = [], tradeTipPinned = false, tradeTipGroup = null;
   let wsKind = '', wsKey = '', lastTickAt = 0, liveRaf = 0, pendingTick = null, wsRetry = 0;
   let drawTool = 'cursor', drawColor = '#3b8aff', drawings = {}, selectedDraw = null, drawUndo = {};
   let measure = null, crosshair = null, longPressTimer = 0, chartPanOff = false, pendingTrend = null;
@@ -1142,7 +1143,7 @@
         return;
       }
     }
-    fillPosition(rec, rec.entry, 'market');
+    fillPosition(rec, rec.entry, rec.typ === 'limit' ? 'limit' : 'market');
   }
 
   function fillPosition(rec, fill, reason) {
@@ -1157,6 +1158,12 @@
     rec.liq = liqPriceOf(rec.side, rec.entry, rec.lev, rec.maxLev, rec.platform);
     rec.openFee = Math.abs(rec.entry * rec.qty) * (rec.feeRate || 0);
     rec.openedAt = Date.now();
+    rec.fills = Array.isArray(rec.fills) ? rec.fills.slice() : [];
+    rec.fills.push({
+      t: rec.openedAt, px: fill, qty: rec.qty,
+      side: rec.side === 'long' ? 'buy' : 'sell',
+      kind: reason === 'limit' ? 'limit' : 'open'
+    });
     book.balance -= rec.openFee;
     book.positions.push(rec);
     book.pending = (book.pending || []).filter((p) => p.id !== rec.id);
@@ -1186,9 +1193,20 @@
     const closeFee = Math.abs(exit * p.qty) * (p.feeRate || 0);
     const net = pnl - closeFee;
     book.balance += net;
+    const closedAt = Date.now();
+    const closeFill = {
+      t: closedAt, px: exit, qty: p.qty,
+      side: p.side === 'long' ? 'sell' : 'buy',
+      kind: reason || 'manual',
+      pnl: net
+    };
+    const fills = (Array.isArray(p.fills) ? p.fills.slice() : []).concat([closeFill]);
     book.history.unshift({
-      id: p.id, coin: p.coin, side: p.side, entry: p.entry, exit: exit,
-      pnl: net, reason: reason || 'manual', t: Date.now()
+      id: p.id, coin: p.coin, platform: p.platform, side: p.side, typ: p.typ,
+      qty: p.qty, entry: p.entry, exit: exit,
+      pnl: net, reason: reason || 'manual', t: closedAt,
+      openedAt: p.openedAt || p.t,
+      fills: fills
     });
     book.positions.splice(i, 1);
     savePaper();
@@ -1316,6 +1334,7 @@
       renderOverlay();
       renderDrawings();
       renderSessionMarks();
+      placeTradeTip();
     });
     el._tdRo.observe(el);
   }
@@ -1483,6 +1502,7 @@
     }
     bars = merged;
     series.setData(bars);
+    refreshTradeMarkers();
     if (logical) {
       try { chart.timeScale().setVisibleLogicalRange(logical); } catch (e) { /* */ }
     }
@@ -1504,6 +1524,8 @@
       try { chart.remove(); } catch (e) { /* */ }
       chart = series = null;
     }
+    hideTradeTip(true);
+    tradeMarks = [];
     host.innerHTML = '';
     chart = LightweightCharts.createChart(host, Object.assign({ width: host.clientWidth, height: host.clientHeight }, chartOptions()));
     series = chart.addCandlestickSeries(candleStyle());
@@ -1511,8 +1533,10 @@
     sizeChart();
     chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
       renderOverlay(); renderDrawings(); renderSessionMarks();
+      placeTradeTip();
       maybeLoadOlder(range);
     });
+    chart.subscribeCrosshairMove(function (param) { onTradeTipCrosshair(param); });
     bars = [];
     const end = Date.now();
     const want = end - (TF_INIT_MS[state.tf] || 7 * 86400e3);
@@ -1526,6 +1550,7 @@
       if (gen !== histGen) return;
       bars = normalizeBars(bars, state.tf);
       series.setData(bars);
+      refreshTradeMarkers();
       sizeChart();
       showRecentBars();
       /* Re-apply once layout/width is final so the first paint is not one candle
@@ -1551,6 +1576,7 @@
     renderOverlay();
     renderDrawings();
     renderSessionMarks();
+    refreshTradeMarkers();
     renderLiveSrc();
     renderAssetHead();
   }
@@ -1593,6 +1619,7 @@
     const added = more.length;
     bars = normalizeBars(more.concat(bars), tf);
     series.setData(bars);
+    refreshTradeMarkers();
     if (logical) {
       try {
         chart.timeScale().setVisibleLogicalRange({ from: logical.from + added, to: logical.to + added });
@@ -1612,6 +1639,194 @@
     const y = series.priceToCoordinate(price);
     return y == null ? null : y;
   }
+
+  function fillKindLabel(kind, side) {
+    if (kind === 'tp') return 'Take profit';
+    if (kind === 'sl') return 'Stop loss';
+    if (kind === 'liq') return 'Liquidated';
+    if (kind === 'limit') return 'Limit ' + (side === 'buy' ? 'buy' : 'sell');
+    if (kind === 'partial') return 'Partial close';
+    if (kind === 'manual') return 'Close';
+    if (kind === 'open' || kind === 'market' || kind === 'add') return side === 'buy' ? 'Buy' : 'Sell';
+    return side === 'buy' ? 'Buy' : 'Sell';
+  }
+  function fillsFromTrade(rec, isOpenPos) {
+    if (!rec) return [];
+    if (Array.isArray(rec.fills) && rec.fills.length) {
+      return rec.fills.filter(function (f) { return f && f.px > 0 && f.t > 0; });
+    }
+    const out = [];
+    const openT = rec.openedAt || (isOpenPos ? rec.t : 0);
+    if (rec.entry > 0 && openT > 0) {
+      out.push({
+        t: openT, px: rec.entry, qty: rec.qty || 0,
+        side: rec.side === 'long' ? 'buy' : 'sell',
+        kind: rec.typ === 'limit' ? 'limit' : 'open'
+      });
+    }
+    if (!isOpenPos && rec.exit > 0 && rec.t > 0) {
+      out.push({
+        t: rec.t, px: rec.exit, qty: rec.qty || 0,
+        side: rec.side === 'long' ? 'sell' : 'buy',
+        kind: rec.reason || 'manual',
+        pnl: rec.pnl
+      });
+    }
+    return out;
+  }
+  function collectTradeFills() {
+    const coin = state.coin, plat = state.platform;
+    const out = [];
+    function consider(rec, isOpenPos) {
+      if (!rec || rec.coin !== coin) return;
+      if (rec.platform && rec.platform !== plat) return;
+      const list = fillsFromTrade(rec, isOpenPos);
+      for (let i = 0; i < list.length; i++) out.push(list[i]);
+    }
+    (book.positions || []).forEach(function (p) { consider(p, true); });
+    (book.history || []).forEach(function (h) { consider(h, false); });
+    return out;
+  }
+  function groupedTradeMarks() {
+    const groups = new Map();
+    const known = new Set();
+    (bars || []).forEach(function (b) { if (b && b.time) known.add(b.time); });
+    collectTradeFills().forEach(function (f) {
+      let time = bucketTime(f.t, state.tf);
+      if (!time) return;
+      if (!known.has(time) && bars.length) {
+        const last = bars[bars.length - 1];
+        if (last && time > last.time && time <= last.time + tfSeconds(state.tf)) time = last.time;
+      }
+      if (!known.has(time)) return;
+      const side = f.side === 'buy' ? 'buy' : 'sell';
+      const key = time + '|' + side;
+      let g = groups.get(key);
+      if (!g) {
+        g = { time: time, side: side, fills: [], qty: 0, pnl: 0, hasPnl: false, id: 'tf-' + time + '-' + side };
+        groups.set(key, g);
+      }
+      g.fills.push(f);
+      if (f.qty > 0) g.qty += f.qty;
+      if (f.pnl != null && isFinite(f.pnl)) { g.pnl += f.pnl; g.hasPnl = true; }
+    });
+    return Array.from(groups.values()).sort(function (a, b) { return a.time - b.time || (a.side === 'buy' ? -1 : 1); });
+  }
+  function refreshTradeMarkers() {
+    if (!series) {
+      tradeMarks = [];
+      hideTradeTip(true);
+      return;
+    }
+    tradeMarks = groupedTradeMarks();
+    try {
+      series.setMarkers(tradeMarks.map(function (g) {
+        const n = g.fills.length;
+        const letter = g.side === 'buy' ? 'B' : 'S';
+        return {
+          time: g.time,
+          position: g.side === 'buy' ? 'belowBar' : 'aboveBar',
+          color: g.side === 'buy' ? UP : DN,
+          shape: g.side === 'buy' ? 'arrowUp' : 'arrowDown',
+          text: (n > 1 ? n : '') + letter,
+          size: 1,
+          id: g.id
+        };
+      }));
+    } catch (e) { /* */ }
+    if (tradeTipPinned && tradeTipGroup) {
+      const id = tradeTipGroup.id;
+      tradeTipGroup = tradeMarks.filter(function (g) { return g.id === id; })[0] || null;
+      if (!tradeTipGroup) hideTradeTip(true);
+      else placeTradeTip();
+    }
+  }
+  function tradeMarksAt(time) {
+    const t = toUnixSec(time);
+    if (!t) return [];
+    return tradeMarks.filter(function (g) { return g.time === t; });
+  }
+  function tradeTipHtml(groups) {
+    let html = '';
+    (groups || []).forEach(function (g) {
+      g.fills.forEach(function (f) {
+        const side = f.side === 'buy' ? 'buy' : 'sell';
+        const label = fillKindLabel(f.kind, side);
+        html += '<div class="tt-row"><span class="tt-side ' + side + '">' + label + '</span>';
+        if (f.px > 0) html += ' · ' + fmtPrice(f.px, true);
+        if (f.qty > 0) html += ' · ' + trimFixed(f.qty, 6);
+        if (f.pnl != null && isFinite(f.pnl)) {
+          html += ' · <span class="tt-pnl ' + (f.pnl >= 0 ? 'up' : 'dn') + '">PnL ' + fmtUsd(f.pnl, true) + '</span>';
+        }
+        html += '</div>';
+      });
+    });
+    return html;
+  }
+  function hideTradeTip(clearPin) {
+    if (clearPin) { tradeTipPinned = false; tradeTipGroup = null; }
+    const tip = $('tradeTip');
+    if (tip) tip.hidden = true;
+  }
+  function showTradeTipGroups(groups, pin) {
+    const tip = $('tradeTip');
+    if (!tip) return false;
+    if (!groups || !groups.length) {
+      if (!tradeTipPinned || pin) hideTradeTip(!!pin);
+      return false;
+    }
+    tip.innerHTML = tradeTipHtml(groups);
+    tradeTipGroup = groups[0];
+    if (pin) tradeTipPinned = true;
+    tip.hidden = false;
+    placeTradeTip();
+    return true;
+  }
+  function placeTradeTip() {
+    const tip = $('tradeTip');
+    if (!tip || tip.hidden || !chart || !series || !tradeTipGroup) return;
+    const g = tradeTipGroup;
+    const x = chart.timeScale().timeToCoordinate(g.time);
+    if (x == null) { tip.hidden = true; return; }
+    const bar = (bars || []).filter(function (b) { return b.time === g.time; })[0];
+    let y = null;
+    if (g.side === 'buy') y = bar ? series.priceToCoordinate(bar.low) : null;
+    else y = bar ? series.priceToCoordinate(bar.high) : null;
+    if (y == null) y = 40;
+    const host = $('chartWrap') || $('chart');
+    const w = (host && host.clientWidth) || 0;
+    const h = (host && host.clientHeight) || 0;
+    let left = x;
+    let top = g.side === 'buy' ? (y + 28) : (y - 8);
+    if (g.side === 'buy') tip.style.transform = 'translate(-50%, 0)';
+    else tip.style.transform = 'translate(-50%, -100%)';
+    left = Math.max(44, Math.min(w - 44, left));
+    top = Math.max(8, Math.min(h - 8, top));
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    tip.hidden = false;
+  }
+  function onTradeTipCrosshair(param) {
+    if (tradeTipPinned) return;
+    if (!param || param.time == null || !param.point) { hideTradeTip(false); return; }
+    let groups = [];
+    if (param.hoveredObjectId) {
+      const hit = tradeMarks.filter(function (g) { return g.id === param.hoveredObjectId; })[0];
+      if (hit) groups = [hit];
+    }
+    if (!groups.length) groups = tradeMarksAt(param.time);
+    if (!groups.length) { hideTradeTip(false); return; }
+    showTradeTipGroups(groups, false);
+  }
+  function showTradeTipAtTime(time, pin) {
+    const groups = tradeMarksAt(time);
+    if (!groups.length) {
+      if (pin) hideTradeTip(true);
+      return false;
+    }
+    return showTradeTipGroups(groups, pin);
+  }
+
   function renderOverlay() {
     const el = $('chartOverlay');
     if (!el) return;
@@ -1989,6 +2204,7 @@
     if (!$('orderSheet').hidden || isDesktop()) renderOrder();
     renderOverlay();
     renderDrawings();
+    refreshTradeMarkers();
     renderAbout();
     renderLiveSrc();
     if (isDesktop()) renderOb();
@@ -2371,6 +2587,7 @@
         ev.preventDefault();
         closeMinis();
         clearCrosshair();
+        hideTradeTip(true);
         if (measure) { measure = null; }
         pendingTrend = null;
         selectedDraw = null;
@@ -2719,6 +2936,7 @@
     if (!last) {
       bars = [bar];
       series.setData(bars);
+      refreshTradeMarkers();
       return;
     }
     lastTickAt = Date.now();
@@ -3598,6 +3816,9 @@
         } else {
           selectedDraw = null;
           if (measure && !measure.live) measure = null;
+          const t = timeAtX(pt.x);
+          if (t && showTradeTipAtTime(t, true)) { /* pin B/S tip */ }
+          else hideTradeTip(true);
           renderDrawings();
         }
       }
