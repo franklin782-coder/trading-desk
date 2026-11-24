@@ -501,13 +501,17 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
   padding: 2px 5px; border-radius: 2px 0 0 2px; font-variant-numeric: tabular-nums; z-index: 6;
 }
 .meas-box {
-  position: absolute; background: rgba(59,138,255,.18); border: 1px solid rgba(59,138,255,.7); pointer-events: none;
+  position: absolute; pointer-events: none;
 }
 .meas-lab {
-  position: absolute; background: #111; border: 1px solid #3b8aff; color: #fff;
-  font-size: 11px; font-weight: 700; padding: 6px 8px; border-radius: 8px;
+  position: absolute; background: #2962FF; color: #fff; border: 0;
+  font-size: 12px; font-weight: 700; line-height: 1.35; text-align: center;
+  padding: 6px 10px; border-radius: 4px;
   font-variant-numeric: tabular-nums; white-space: nowrap; z-index: 6; pointer-events: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,.4);
 }
+.meas-lab.dn { background: #F23645; }
+.meas-lab span { display: block; }
 
 .asset-tabs {
   display: flex; gap: 8px;
@@ -585,9 +589,10 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
     z-index: 6;
   }
   .desk-brand {
-    display: flex; align-items: baseline; gap: 8px; flex: none;
+    display: flex; align-items: center; gap: 8px; flex: none;
     font-size: 15px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap;
   }
+  .desk-logo { width: 22px; height: 22px; border-radius: 6px; flex: none; display: block; }
   .desk-mark { color: var(--green-text); font-size: 13px; }
   .desk-sub { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .desk-nav { display: flex; gap: 4px; min-width: 0; }

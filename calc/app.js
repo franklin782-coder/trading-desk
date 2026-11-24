@@ -419,6 +419,30 @@
   function tickSessionClocks() {
     renderSessionPill();
     renderFundingTick();
+    updateTabTitle();
+  }
+  let tabTitleAt = 0, tabTitleLast = '', tabTitleKey = '';
+  function tabVenueTag(c) {
+    c = c || currentCoin();
+    if (isHl()) return (c.hl && c.hl.dex === 'xyz') ? 'xyz' : 'HL';
+    return 'Aster';
+  }
+  function updateTabTitle() {
+    const c = currentCoin();
+    const key = state.platform + ':' + c.id;
+    const px = displayPx(c.id);
+    const price = (px > 0) ? fmtPrice(px, false) : '';
+    const next = price
+      ? (price + ' | ' + c.name + ' (' + tabVenueTag(c) + ') | Trading Desk')
+      : (c.name + ' (' + tabVenueTag(c) + ') | Trading Desk');
+    const now = Date.now();
+    const switched = key !== tabTitleKey;
+    if (!switched && next === tabTitleLast) return;
+    if (!switched && now - tabTitleAt < 1000) return;
+    tabTitleKey = key;
+    tabTitleAt = now;
+    tabTitleLast = next;
+    document.title = next;
   }
   function sessMarksAllowed() {
     return state.tf === '1m' || state.tf === '5m' || state.tf === '15m' || state.tf === '1h';
@@ -1210,6 +1234,47 @@
   }
 
   /* ——— chart ——— */
+
+  const DISPLAY_TZ = 'Asia/Almaty';
+  const _tzFmt = {};
+  function tzFormatter(opts) {
+    const key = JSON.stringify(opts);
+    if (!_tzFmt[key]) _tzFmt[key] = new Intl.DateTimeFormat('en-GB', Object.assign({ timeZone: DISPLAY_TZ, hourCycle: 'h23' }, opts));
+    return _tzFmt[key];
+  }
+  function toTimeMs(time) {
+    if (time == null) return 0;
+    if (typeof time === 'object') {
+      if (time.year && time.month && time.day) return Date.UTC(time.year, time.month - 1, time.day);
+      if (time.timestamp) time = time.timestamp;
+    }
+    const n = Number(time);
+    if (!(n > 0)) return 0;
+    return n > 1e11 ? n : n * 1000;
+  }
+  function fmtAlmatyClock(ms, withSeconds) {
+    if (!(ms > 0)) return '';
+    const opts = { hour: '2-digit', minute: '2-digit' };
+    if (withSeconds) opts.second = '2-digit';
+    return tzFormatter(opts).format(new Date(ms));
+  }
+  function chartTickMarkFormatter(time, tickMarkType) {
+    const ms = toTimeMs(time);
+    if (!ms) return '';
+    const Type = (window.LightweightCharts && LightweightCharts.TickMarkType) || { Year: 0, Month: 1, DayOfMonth: 2, Time: 3, TimeWithSeconds: 4 };
+    if (tickMarkType === Type.Year) return tzFormatter({ year: 'numeric' }).format(new Date(ms));
+    if (tickMarkType === Type.Month) return tzFormatter({ month: 'short', year: '2-digit' }).format(new Date(ms));
+    if (tickMarkType === Type.DayOfMonth) return tzFormatter({ day: 'numeric', month: 'short' }).format(new Date(ms));
+    if (tickMarkType === Type.TimeWithSeconds) return fmtAlmatyClock(ms, true);
+    return fmtAlmatyClock(ms, false);
+  }
+  function chartTimeFormatter(time) {
+    const ms = toTimeMs(time);
+    if (!ms) return '';
+    const opts = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
+    if (state.tf === '1m') opts.second = '2-digit';
+    return tzFormatter(opts).format(new Date(ms));
+  }
   function chartOptions() {
     return {
       layout: { background: { color: '#000000' }, textColor: '#8a8a8a', fontSize: 11 },
@@ -1223,6 +1288,11 @@
         barSpacing: 8, minBarSpacing: 0.25, rightOffset: 6
       },
       crosshair: { vertLine: { color: '#333', labelBackgroundColor: '#222' }, horzLine: { color: '#333', labelBackgroundColor: '#222' } },
+      localization: {
+        locale: 'en-GB',
+        timeFormatter: chartTimeFormatter,
+        tickMarkFormatter: chartTickMarkFormatter
+      },
       handleScroll: { pinch: true, mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { price: true, time: true }, axisDoubleClickReset: { price: true, time: true } }
     };
@@ -1292,12 +1362,16 @@
     const time = bucketTime(row.t || row.T || row.time, tf);
     const open = +row.o, high = +row.h, low = +row.l, close = +row.c;
     if (!time || !(close > 0) || !(open > 0)) return null;
+    const vol = parseFloat(row.v != null ? row.v : (row.vol != null ? row.vol : row.volume));
+    const quote = parseFloat(row.quote != null ? row.quote : row.quoteVolume);
     return {
       time: time,
       open: open,
       high: high > 0 ? Math.max(high, open, close) : Math.max(open, close),
       low: low > 0 ? Math.min(low, open, close) : Math.min(open, close),
-      close: close
+      close: close,
+      vol: vol > 0 ? vol : 0,
+      quote: quote > 0 ? quote : 0
     };
   }
   function normalizeBars(list, tf) {
@@ -1307,12 +1381,16 @@
       if (raw && raw.time && raw.close != null && raw.open != null && raw.o == null) {
         const time = bucketTime(raw.time, tf) || toUnixSec(raw.time);
         if (!time || !(+raw.close > 0) || !(+raw.open > 0)) return;
+        const vol = parseFloat(raw.vol != null ? raw.vol : raw.v);
+        const quote = parseFloat(raw.quote != null ? raw.quote : raw.quoteVolume);
         b = {
           time: time,
           open: +raw.open,
           high: Math.max(+raw.high || 0, +raw.open, +raw.close),
           low: Math.min(+raw.low || +raw.open, +raw.open, +raw.close),
-          close: +raw.close
+          close: +raw.close,
+          vol: vol > 0 ? vol : 0,
+          quote: quote > 0 ? quote : 0
         };
       } else {
         b = parseBar(raw, tf);
@@ -1326,7 +1404,9 @@
           open: prev.open,
           high: Math.max(prev.high, b.high),
           low: Math.min(prev.low, b.low),
-          close: b.close
+          close: b.close,
+          vol: (prev.vol || 0) + (b.vol || 0),
+          quote: (prev.quote || 0) + (b.quote || 0)
         });
       }
     });
@@ -1355,7 +1435,7 @@
     }
     const px = last.close;
     for (let t = last.time + step; t < untilTime - step / 2; t += step) {
-      const bar = { time: t, open: px, high: px, low: px, close: px };
+      const bar = { time: t, open: px, high: px, low: px, close: px, vol: 0, quote: 0 };
       bars.push(bar);
       series.update(bar);
     }
@@ -1657,6 +1737,7 @@
     const mark = meta.mark > 0 ? meta.mark : px;
     if ($('statOi')) $('statOi').textContent = meta.oi > 0 ? fmtCompactUsd(meta.oi * (mark || 0)) : '—';
     tickSessionClocks();
+    updateTabTitle();
   }
 
   function posHtml(p, compact) {
@@ -1689,11 +1770,12 @@
     return r === 'tp' ? 'Take profit' : r === 'sl' ? 'Stop loss' : r === 'liq' ? 'Liquidated' : r === 'limit' ? 'Limit' : 'Closed';
   }
   function fmtTime(t) {
-    if (!t) return '—';
+    const ms = toTimeMs(t);
+    if (!ms) return '—';
     try {
-      return new Date(t).toLocaleString('ru-KZ', { timeZone: 'Asia/Almaty', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return tzFormatter({ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(ms));
     } catch (e) {
-      return new Date(t).toLocaleString();
+      return fmtAlmatyClock(ms, false);
     }
   }
   function renderBookTable() {
@@ -2409,7 +2491,8 @@
     if (!r.ok) throw new Error('klines ' + r.status);
     const raw = await r.json();
     const list = (Array.isArray(raw) ? raw : []).map((row) => ({
-      time: toUnixSec(row[0]), open: +row[1], high: +row[2], low: +row[3], close: +row[4]
+      time: toUnixSec(row[0]), open: +row[1], high: +row[2], low: +row[3], close: +row[4],
+      vol: +row[5] || 0, quote: +row[7] || 0
     }));
     return normalizeBars(list, tf);
   }
@@ -2616,7 +2699,7 @@
     if (type === 'kline' && d.k) {
       if (d.k.s && !sameAsterSym(d.k.s)) return;
       const k = d.k;
-      const bar = normalizeBars([{ time: toUnixSec(k.t), open: +k.o, high: +k.h, low: +k.l, close: +k.c }], state.tf)[0];
+      const bar = normalizeBars([{ time: toUnixSec(k.t), open: +k.o, high: +k.h, low: +k.l, close: +k.c, vol: +k.v || 0, quote: +k.q || 0 }], state.tf)[0];
       if (bar) {
         applyOfficialBar(bar);
         applyTradeTick(bar.close, 'aster');
@@ -2644,7 +2727,9 @@
         time: bar.time, open: last.open,
         high: Math.max(last.high, bar.high),
         low: Math.min(last.low, bar.low),
-        close: bar.close
+        close: bar.close,
+        vol: (bar.vol > 0 ? bar.vol : last.vol) || 0,
+        quote: (bar.quote > 0 ? bar.quote : last.quote) || 0
       };
       series.update(bars[bars.length - 1]);
     } else if (bar.time > last.time) {
@@ -2708,7 +2793,9 @@
           open: last.open,
           high: Math.max(last.high, t.px),
           low: Math.min(last.low, t.px),
-          close: t.px
+          close: t.px,
+          vol: last.vol || 0,
+          quote: last.quote || 0
         };
         bars[bars.length - 1] = bar;
         series.update(bar);
@@ -2720,7 +2807,9 @@
           open: last2.close,
           high: Math.max(last2.close, t.px),
           low: Math.min(last2.close, t.px),
-          close: t.px
+          close: t.px,
+          vol: 0,
+          quote: 0
         };
         bars.push(bar);
         series.update(bar);
@@ -2817,8 +2906,7 @@
       if (!tape.length) { tradesEl.innerHTML = '<div class="ob-empty">No trades yet</div>'; return; }
       tradesEl.innerHTML = '<div class="ob-head"><span>Price</span><span class="sz">Size</span><span class="t">Time</span></div>' +
         tape.map((t) => {
-          const d = new Date(t.t > 1e12 ? t.t : t.t);
-          const hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+          const hh = fmtAlmatyClock(toTimeMs(t.t) || Date.now(), true);
           return '<div class="ob-tr ' + t.side + '"><span class="px">' + fmtPrice(t.px) + '</span><span class="sz">' + trimFixed(t.sz, t.sz >= 1 ? 3 : 5) + '</span><span class="t">' + hh + '</span></div>';
         }).join('');
       return;
@@ -2965,7 +3053,7 @@
     setAboutOpen(isDesktop() ? true : state.aboutOpen);
   }
 
-  /* ——— drawings + long-press limit ——— */
+  /* ——— drawings ——— */
   function loadDrawings() {
     try { drawings = JSON.parse(localStorage.getItem(DRAW_KEY) || '{}') || {}; }
     catch (e) { drawings = {}; }
@@ -3037,40 +3125,105 @@
         svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + col + '" stroke-width="' + thick + '"/>';
       }
     });
-    if (measure && measure.a && measure.b) {
-      const x1 = measure.a.x, y1 = measure.a.y, x2 = measure.b.x, y2 = measure.b.y;
-      const rx = Math.min(x1, x2), ry = Math.min(y1, y2), rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
-      svg += '<rect x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" fill="rgba(59,138,255,.16)" stroke="rgba(59,138,255,.75)"/>';
-    }
-    if (crosshair && yAt(crosshair.price) != null) {
-      const y = yAt(crosshair.price);
-      const x = crosshair.x != null ? crosshair.x : (w / 2);
-      svg += '<line x1="0" y1="' + y + '" x2="' + (w - 48) + '" y2="' + y + '" stroke="#fff" stroke-width="1" stroke-dasharray="5 4"/>';
-      svg += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#fff"/>';
-    }
+    if (measure && measure.a && measure.b) svg += measureSvg(measure, w, h);
     svg += '</svg>';
     let extra = '';
-    if (crosshair && yAt(crosshair.price) != null) {
-      extra += '<div class="xh-lab" style="top:' + yAt(crosshair.price) + 'px">' + fmtPrice(crosshair.price, true) + '</div>';
-    }
-    if (measure && measure.a && measure.b) {
-      const p1 = measure.a.price, p2 = measure.b.price;
-      const dp = p2 - p1;
-      const pct = p1 ? (dp / p1) * 100 : 0;
-      let barsN = 0, dur = '';
-      if (measure.a.time != null && measure.b.time != null) {
-        const dt = Math.abs(measure.b.time - measure.a.time);
-        const step = (bars.length >= 2) ? Math.abs(bars[bars.length - 1].time - bars[bars.length - 2].time) : 60;
-        barsN = step ? Math.round(dt / step) : 0;
-        dur = fmtDuration(dt);
-      }
-      const lab = (dp >= 0 ? '+' : '') + fmtPrice(dp, true) + '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)' +
-        (barsN ? ('  ·  ' + barsN + ' bars') : '') + (dur ? ('  ·  ' + dur) : '');
-      const x = Math.max(8, Math.min(host.clientWidth - 180, (measure.a.x + measure.b.x) / 2));
-      const y = Math.max(8, Math.min(host.clientHeight - 40, (measure.a.y + measure.b.y) / 2));
-      extra += '<div class="meas-lab" style="left:' + x + 'px;top:' + y + 'px">' + lab + '</div>';
-    }
+    if (measure && measure.a && measure.b) extra += measureLabelHtml(measure, w, h);
     host.innerHTML = svg + extra;
+  }
+
+  function tickSizeOf(px) {
+    const p = px > 0 ? px : displayPx(state.coin);
+    const meta = liveMeta[state.coin] || {};
+    if (meta.tick > 0) return meta.tick;
+    if (p >= 1000) return 0.1;
+    if (p >= 100) return 0.01;
+    if (p >= 10) return 0.001;
+    if (p >= 1) return 0.0001;
+    if (p >= 0.1) return 0.00001;
+    if (p >= 0.01) return 0.000001;
+    return 1e-8;
+  }
+  function fmtMeasVol(x) {
+    if (!(x > 0)) return '';
+    const units = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+    for (let i = 0; i < units.length; i++) {
+      if (x >= units[i][0]) {
+        const n = x / units[i][0];
+        const s = n.toFixed(3);
+        return s.replace(/\.0+$/, '').replace(/(\.[1-9]*)0+$/, '$1') + ' ' + units[i][1];
+      }
+    }
+    return (x >= 10 ? x.toFixed(3) : x.toFixed(4)).replace(/\.?0+$/, '');
+  }
+  function measureRangeStats(m) {
+    const p1 = m.a.price, p2 = m.b.price;
+    const dp = (p2 || 0) - (p1 || 0);
+    const pct = p1 ? (dp / p1) * 100 : 0;
+    const up = dp >= 0;
+    let barsN = 0, dur = '', volSum = 0, hasVol = false, quoteSum = 0, hasQuote = false;
+    if (m.a.time != null && m.b.time != null) {
+      const lo = Math.min(m.a.time, m.b.time), hi = Math.max(m.a.time, m.b.time);
+      const dt = hi - lo;
+      const step = (bars.length >= 2) ? Math.abs(bars[bars.length - 1].time - bars[bars.length - 2].time) : tfSeconds(state.tf);
+      barsN = step ? Math.max(1, Math.round(dt / step)) : 0;
+      dur = fmtDuration(dt);
+      (bars || []).forEach(function (b) {
+        if (!b || b.time < lo || b.time > hi) return;
+        if (b.quote > 0) { quoteSum += b.quote; hasQuote = true; }
+        if (b.vol > 0) { volSum += b.vol; hasVol = true; }
+      });
+    }
+    const tick = tickSizeOf(p1 || p2);
+    const ticks = tick > 0 ? Math.round(Math.abs(dp) / tick) : 0;
+    const vol = hasQuote ? quoteSum : (hasVol ? volSum : 0);
+    return { dp: dp, pct: pct, up: up, barsN: barsN, dur: dur, ticks: ticks, vol: vol };
+  }
+  function measureSvg(m, w, h) {
+    const x1 = m.a.x, y1 = m.a.y, x2 = m.b.x, y2 = m.b.y;
+    const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+    const rw = Math.max(1, Math.abs(x2 - x1)), rh = Math.max(1, Math.abs(y2 - y1));
+    const st = measureRangeStats(m);
+    const col = st.up ? '#2962FF' : '#F23645';
+    const fill = st.up ? 'rgba(41,98,255,0.2)' : 'rgba(242,54,69,0.2)';
+    const midX = rx + rw / 2, midY = ry + rh / 2;
+    let s = '<defs><marker id="measArrV" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">' +
+      '<path d="M0 1 L10 5 L0 9 z" fill="' + col + '"/></marker>' +
+      '<marker id="measArrH" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">' +
+      '<path d="M0 1 L10 5 L0 9 z" fill="' + col + '"/></marker></defs>';
+    s += '<rect x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" fill="' + fill + '" stroke="none"/>';
+    /* vertical arrow in the middle, pointing at the end price */
+    s += '<line x1="' + midX + '" y1="' + y1 + '" x2="' + midX + '" y2="' + y2 + '" stroke="' + col + '" stroke-width="1.6" marker-end="url(#measArrV)"/>';
+    /* horizontal arrow across time, pointing toward the end */
+    s += '<line x1="' + x1 + '" y1="' + midY + '" x2="' + x2 + '" y2="' + midY + '" stroke="' + col + '" stroke-width="1.6" marker-end="url(#measArrH)"/>';
+    return s;
+  }
+  function measureLabelHtml(m, w, h) {
+    const st = measureRangeStats(m);
+    const x1 = m.a.x, y1 = m.a.y, x2 = m.b.x, y2 = m.b.y;
+    const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+    const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+    const abs = Math.abs(st.dp);
+    const d = priceDecimals(abs || st.dp || 1);
+    const body = abs.toFixed(d).replace(/\.0+$/, '').replace(/(\.[1-9]*)0+$/, '$1');
+    const sign = st.dp > 0 ? '' : (st.dp < 0 ? '-' : '');
+    const pctSign = st.pct > 0 ? '' : (st.pct < 0 ? '-' : '');
+    const line1 = sign + body + ' (' + pctSign + Math.abs(st.pct).toFixed(2) + '%)' + (st.ticks ? ' , ' + st.ticks : '');
+    const line2 = (st.barsN ? (st.barsN + ' bars') : '') + (st.dur ? ((st.barsN ? ', ' : '') + st.dur) : '');
+    const line3 = st.vol > 0 ? ('Vol ' + fmtMeasVol(st.vol)) : '';
+    const cx = rx + rw / 2;
+    /* label above when measuring up, below when measuring down */
+    const above = st.up;
+    const top = above ? (ry - 8) : (ry + rh + 8);
+    const trans = above ? 'translate(-50%,-100%)' : 'translate(-50%,0)';
+    let left = cx;
+    left = Math.max(8, Math.min(w - 8, left));
+    let html = '<div class="meas-lab' + (st.up ? '' : ' dn') + '" style="left:' + left + 'px;top:' + top + 'px;transform:' + trans + '">';
+    html += '<span>' + line1 + '</span>';
+    if (line2) html += '<span>' + line2 + '</span>';
+    if (line3) html += '<span>' + line3 + '</span>';
+    html += '</div>';
+    return html;
   }
 
   function fmtDuration(sec) {
@@ -3086,35 +3239,13 @@
   }
 
   function renderCrosshair() {
-    const btn = $('limitOrderBtn');
-    if (!btn) { renderDrawings(); return; }
-    if (!crosshair || !(crosshair.price > 0)) { btn.hidden = true; renderDrawings(); return; }
-    const y = yAt(crosshair.price);
-    const host = $('chartWrap') || $('chart');
-    if (y == null || !host) { btn.hidden = true; renderDrawings(); return; }
-    btn.hidden = false;
-    const top = Math.max(18, Math.min(host.clientHeight - 18, y));
-    const x = Math.max(70, Math.min(host.clientWidth - 120, (crosshair.x || 80) + 16));
-    btn.style.top = top + 'px';
-    btn.style.left = x + 'px';
     renderDrawings();
   }
 
   function clearCrosshair() {
     crosshair = null;
-    const btn = $('limitOrderBtn');
-    if (btn) btn.hidden = true;
     if (chartPanOff && drawTool === 'cursor' && !measure) setChartInteractive(true);
     renderDrawings();
-  }
-
-  function openLimitAt(price) {
-    if (!(price > 0)) return;
-    state.typ = 'limit';
-    state.limitPx = price;
-    saveUi();
-    clearCrosshair();
-    openOrder(state.side || 'long');
   }
 
   function localXY(ev, host) {
@@ -3234,11 +3365,6 @@
       if (t === 'clear') { clearAllDraws(); return; }
       setDrawTool(t);
     });
-    if ($('limitOrderBtn')) $('limitOrderBtn').onclick = function (ev) {
-      ev.preventDefault(); ev.stopPropagation();
-      if (crosshair && crosshair.price > 0) openLimitAt(crosshair.price);
-    };
-
     const host = $('chartWrap');
     if (!host) return;
     let start = null;
@@ -3290,7 +3416,7 @@
         releasePinch();
         return;
       }
-      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('#limitOrderBtn') || ev.target.closest('.tv-x'))) {
+      if (ev.target.closest && (ev.target.closest('#chartTools') || ev.target.closest('.tv-x'))) {
         restoreChartInteractive();
         return;
       }
@@ -3332,18 +3458,7 @@
         setChartInteractive(false);
         return;
       }
-      if (!(isDesktop() && ev.pointerType !== 'touch')) {
-        longPressTimer = setTimeout(() => {
-          longPressTimer = 0;
-          if (!start || moved || activePtrs.size !== 1) return;
-          if (axisHit(start)) { restoreChartInteractive(); return; }
-          const price = priceAtY(start.y);
-          if (!(price > 0)) return;
-          setChartInteractive(false);
-          crosshair = { price: price, x: start.x, drag: true };
-          renderCrosshair();
-        }, 300);
-      }
+      /* Limit-order long-press pill removed; chart stays interactive for pan/pinch. */
     }
     function onMove(ev) {
       if (activePtrs.size > 1) {
@@ -3480,19 +3595,9 @@
             if ($('toolColors')) $('toolColors').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.getAttribute('data-color') === drawColor));
           }
           renderDrawings();
-        } else if (isDesktop() && ev.pointerType !== 'touch') {
-          const price = priceAtY(pt.y);
-          if (price > 0) {
-            selectedDraw = null;
-            crosshair = { price: price, x: pt.x, pinned: true };
-            renderCrosshair();
-            renderDrawings();
-          }
-        } else if (crosshair) {
-          /* keep mobile long-press pin */
-        } else if (measure) { measure = null; renderDrawings(); }
-        else {
+        } else {
           selectedDraw = null;
+          if (measure && !measure.live) measure = null;
           renderDrawings();
         }
       }
@@ -3501,14 +3606,9 @@
     }
 
     function onHover(ev) {
-      /* Hover must not show the Limit order pill. Built-in chart crosshair is enough. */
+      /* Built-in chart crosshair is enough. */
     }
-    function onLeave(ev) { /* keep a pinned limit crosshair */ }
-    document.addEventListener('pointerdown', function (ev) {
-      if (!crosshair || !crosshair.pinned) return;
-      if (ev.target.closest && (ev.target.closest('#chartWrap') || ev.target.closest('#limitOrderBtn'))) return;
-      clearCrosshair();
-    }, true);
+    function onLeave(ev) { /* built-in crosshair is enough */ }
     function onCancel(ev) {
       if (measure && measure.live) return;
       if (ev && ev.pointerId != null) activePtrs.delete(ev.pointerId);
