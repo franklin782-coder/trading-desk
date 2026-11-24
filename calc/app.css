@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #000;
   --card: #161616;
   --card-2: #1c1c1c;
@@ -16,6 +17,34 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing: border-box; }
+
+/* Dark thin scrollbars (Windows/WebKit + Firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255,255,255,0.22);
+}
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
 body {
   touch-action: manipulation;
@@ -232,7 +261,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   background: #0b0b0b; border: 1px solid #2a2a2a; border-bottom: 0;
   border-radius: 18px 18px 0 0; z-index: 40;
   padding: 12px 16px calc(14px + var(--safe-b));
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .sheet-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
 .sheet-title { font-size: 18px; font-weight: 800; }
@@ -273,7 +303,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .lev-block { display: block; margin: 6px 0 10px; }
-.slider-wrap { position: relative; padding-top: 22px; }
+.slider-wrap { position: relative; padding-top: 22px; overflow-x: clip; }
 .lev-pill {
   position: absolute; top: 0; transform: translateX(-50%);
   background: #fff; color: #111; font-size: 11px; font-weight: 800;
@@ -637,15 +667,21 @@ input[type=range] { width: 100%; accent-color: #fff; height: 28px; }
     max-width: none;
     max-height: none;
     flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
     border: 0;
     border-radius: 0;
     padding: 12px 14px 16px;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     z-index: auto;
     display: flex;
     flex-direction: column;
   }
+  #orderSheet.sheet > * { min-width: 0; max-width: 100%; }
+  .sheet-row, .pcts, .side-toggle, .liq-row { min-width: 0; }
+  .drop, .pcts button, .side-toggle .btn-long, .side-toggle .btn-short { min-width: 0; }
+  .amt-sub, .max-line, .liq-row { overflow-wrap: anywhere; }
   .side-toggle {
     display: grid;
     grid-template-columns: 1fr 1fr;
