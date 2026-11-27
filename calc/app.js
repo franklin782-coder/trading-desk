@@ -21,21 +21,32 @@
   const ASTER_BRACKET_URL = 'https://www.asterdex.com/bapi/futures/v1/friendly/future/common/brackets';
   const HL_INFO = 'https://api.hyperliquid.xyz/info';
   const HL_WS = 'wss://api.hyperliquid.xyz/ws';
-  const FEE_DEFAULTS = { aster: 0.05, hyperliquid: 0.045 };
+  /* www.binance.com/fapi is CORS-open and reachable from regions where fapi.binance.com returns 451. */
+  const BINANCE_API = 'https://www.binance.com/fapi/v1';
+  const BINANCE_BRACKET_URL = 'https://www.binance.com/bapi/futures/v1/friendly/future/common/brackets';
+  const BINANCE_WS = 'wss://fstream.binance.com/stream';
+  const MEXC_API = 'https://contract.mexc.com/api/v1';
+  const MEXC_WS = 'wss://contract.mexc.com/edge';
+  const FEE_DEFAULTS = { aster: 0.05, hyperliquid: 0.045, binance: 0.05, mexc: 0.02 };
+  const PLATFORM_NAME = { aster: 'Aster', hyperliquid: 'Hyperliquid', binance: 'Binance', mexc: 'MEXC' };
+  const PLATFORMS = ['aster', 'hyperliquid', 'binance', 'mexc'];
   const UP = '#86e8a8';
   const DN = '#f6465d';
   const ORANGE = '#fb923c';
 
   const NAMES = {
-    BTC: 'Bitcoin', HYPE: 'HYPE', VVV: 'VVV', SOL: 'Solana', MRNA: 'Moderna', ANT: 'Anthropic',
+    BTC: 'Bitcoin', ETH: 'Ethereum', BNB: 'BNB', HYPE: 'HYPE', VVV: 'VVV', SOL: 'Solana', MRNA: 'Moderna', ANT: 'Anthropic',
     SOXL: 'Direxion SOXL', MU: 'Micron', AMD: 'AMD', AVGO: 'Broadcom', TSM: 'TSMC', SKHYNIX: 'SK Hynix', NVDA: 'NVIDIA',
     TSLA: 'Tesla', SPCX: 'SpaceX', ASML: 'ASML', AMAT: 'Applied Materials', LRCX: 'Lam Research',
-    SAMSUNG: 'Samsung', SMCI: 'Super Micro', SMH: 'VanEck SMH', SP500: 'S&P 500', XYZ100: 'XYZ 100'
+    SAMSUNG: 'Samsung', SMCI: 'Super Micro', SMH: 'VanEck SMH', SP500: 'S&P 500', XYZ100: 'XYZ 100',
+    QQQ: 'Invesco QQQ', BRENTOIL: 'Brent Crude'
   };
-  const CRYPTO = { BTC: 1, HYPE: 1, VVV: 1, SOL: 1 };
+  const CRYPTO = { BTC: 1, ETH: 1, BNB: 1, HYPE: 1, VVV: 1, SOL: 1 };
 
   const COINS = [
     { id: 'BTC', name: 'BTC', aster: { symbol: 'BTCUSDT', max: 40, fallback: 61313 }, hl: { coin: 'BTC', max: 40, fallback: 61313 } },
+    { id: 'ETH', name: 'ETH', aster: { symbol: 'ETHUSDT', max: 200, fallback: 1725 }, hl: { coin: 'ETH', max: 25, fallback: 1725 } },
+    { id: 'BNB', name: 'BNB', aster: { symbol: 'BNBUSDT', max: 200, fallback: 563 }, hl: { coin: 'BNB', max: 10, fallback: 563 } },
     { id: 'HYPE', name: 'HYPE', aster: { symbol: 'HYPEUSDT', max: 300, fallback: 64.01 }, hl: { coin: 'HYPE', max: 10, fallback: 64.01 } },
     { id: 'SOL', name: 'SOL', aster: { symbol: 'SOLUSDT', max: 100, fallback: 72.20 }, hl: { coin: 'SOL', max: 20, fallback: 72.20 } },
     { id: 'VVV', name: 'VVV', aster: { symbol: 'VVVUSDT', max: 10, fallback: 26.06 }, hl: { coin: 'VVV', max: 3, fallback: 26.06 } },
@@ -57,7 +68,9 @@
     { id: 'SMCI', name: 'SMCI', hl: { coin: 'xyz:SMCI', max: 10, fallback: 24.37, dex: 'xyz' } },
     { id: 'SMH', name: 'SMH', hl: { coin: 'xyz:SMH', max: 20, fallback: 424.66, dex: 'xyz' } },
     { id: 'SP500', name: 'SP500', hl: { coin: 'xyz:SP500', max: 50, fallback: 7101.8, dex: 'xyz' } },
-    { id: 'XYZ100', name: 'XYZ100', hl: { coin: 'xyz:XYZ100', max: 30, fallback: 25945, dex: 'xyz' } }
+    { id: 'XYZ100', name: 'XYZ100', hl: { coin: 'xyz:XYZ100', max: 30, fallback: 25945, dex: 'xyz' } },
+    { id: 'QQQ', name: 'QQQ', aster: { symbol: 'QQQUSDT', max: 20, fallback: 648.6 } },
+    { id: 'BRENTOIL', name: 'BRENTOIL', hl: { coin: 'xyz:BRENTOIL', max: 20, fallback: 91.48, dex: 'xyz' } }
   ];
   const COIN_BY_ID = Object.fromEntries(COINS.map((c) => [c.id, c]));
 
@@ -79,7 +92,10 @@
     SPCX: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
     ASML: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
     AMAT: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}],
-    SAMSUNG: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}]
+    SAMSUNG: [{min:21,max:50,cap:1000000},{min:11,max:20,cap:5000000},{min:6,max:10,cap:10000000},{min:5,max:5,cap:20000000},{min:4,max:4,cap:30000000},{min:3,max:3,cap:40000000},{min:2,max:2,cap:100000000},{min:1,max:1,cap:1000000000}],
+    ETH: [{min:151,max:200,cap:400},{min:101,max:150,cap:300000},{min:76,max:100,cap:800000},{min:51,max:75,cap:3000000},{min:26,max:50,cap:12000000},{min:21,max:25,cap:50000000},{min:11,max:20,cap:65000000},{min:6,max:10,cap:150000000},{min:5,max:5,cap:320000000},{min:4,max:4,cap:400000000},{min:3,max:3,cap:530000000},{min:2,max:2,cap:800000000},{min:1,max:1,cap:1200000000}],
+    BNB: [{min:101,max:200,cap:400},{min:76,max:100,cap:10000},{min:51,max:75,cap:50000},{min:21,max:50,cap:625000},{min:11,max:20,cap:2000000},{min:6,max:10,cap:2500000},{min:5,max:5,cap:7500000},{min:4,max:4,cap:12500000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:25000000},{min:1,max:1,cap:37500000}],
+    QQQ: [{min:11,max:20,cap:1000000},{min:6,max:10,cap:2000000},{min:5,max:5,cap:5000000},{min:4,max:4,cap:10000000},{min:3,max:3,cap:20000000},{min:2,max:2,cap:40000000},{min:1,max:1,cap:1000000000}]
   };
   const HL_TIERS_FALLBACK = {
     BTC: [{lower:0,maxLev:40},{lower:150000000,maxLev:20}],
@@ -92,11 +108,16 @@
     TSLA: [{lower:0,maxLev:20}], SPCX: [{lower:0,maxLev:20}], ASML: [{lower:0,maxLev:10}],
     AMAT: [{lower:0,maxLev:10}], LRCX: [{lower:0,maxLev:10}], SAMSUNG: [{lower:0,maxLev:10}],
     SMCI: [{lower:0,maxLev:10}], SMH: [{lower:0,maxLev:20}], SP500: [{lower:0,maxLev:50}],
-    XYZ100: [{lower:0,maxLev:30}]
+    XYZ100: [{lower:0,maxLev:30}],
+    ETH: [{lower:0,maxLev:25}], BNB: [{lower:0,maxLev:10}], BRENTOIL: [{lower:0,maxLev:20}]
   };
 
   let asterBrackets = JSON.parse(JSON.stringify(ASTER_BRACKETS_FALLBACK));
   let hlTiers = JSON.parse(JSON.stringify(HL_TIERS_FALLBACK));
+  let binanceBrackets = {};
+  let mexcTiers = {};
+  let venueLimitsLive = { binance: false, mexc: false };
+  let venueLimitsAt = 0;
   let hlCache = { at: 0, map: null };
   let dayChange = {};
   let liveMeta = {};
@@ -131,7 +152,7 @@
     tp: null,
     sl: null,
     feePct: FEE_DEFAULTS.aster,
-    fees: { aster: FEE_DEFAULTS.aster, hyperliquid: FEE_DEFAULTS.hyperliquid },
+    fees: { aster: FEE_DEFAULTS.aster, hyperliquid: FEE_DEFAULTS.hyperliquid, binance: FEE_DEFAULTS.binance, mexc: FEE_DEFAULTS.mexc },
     priceStatus: 'idle',
     tf: '1m',
     showTpsl: false,
@@ -158,13 +179,24 @@
   }
 
   function isHl() { return state.platform === 'hyperliquid'; }
-  function platformName() { return isHl() ? 'Hyperliquid' : 'Aster'; }
+  function isBinance() { return state.platform === 'binance'; }
+  function isMexc() { return state.platform === 'mexc'; }
+  function platformName(id) { return PLATFORM_NAME[id || state.platform] || 'Aster'; }
   function currentCoin() { return COIN_BY_ID[state.coin] || COINS[0]; }
-  function coinSpec(coin) {
+  function coinSpec(coin, plat) {
     const c = coin || currentCoin();
-    return isHl() ? c.hl : c.aster;
+    const p = plat || state.platform;
+    if (p === 'hyperliquid') return c.hl;
+    if (p === 'binance') return c.binance;
+    if (p === 'mexc') return c.mexc;
+    return c.aster;
   }
-  function coinAvailable(coin) { return !!(coin && coinSpec(coin)); }
+  function coinAvailable(coin, plat) { return !!(coin && coinSpec(coin, plat)); }
+  function kindOf(c) {
+    if (CRYPTO[c.id]) return 'crypto';
+    if (c.id === 'BRENTOIL') return 'other';
+    return 'stock';
+  }
   function logoSrc(id) { return 'logos/' + id + '.png'; }
   function levMax() {
     const s = coinSpec();
@@ -201,7 +233,6 @@
     const px = displayPx(p.coin) || markOf(p.coin);
     return (p.qty || 0) * (px || 0);
   }
-  function kindOf(c) { return CRYPTO[c.id] ? 'crypto' : 'stock'; }
 
   function parseNum(v) {
     if (typeof v === 'number') return v;
@@ -426,6 +457,8 @@
   function tabVenueTag(c) {
     c = c || currentCoin();
     if (isHl()) return (c.hl && c.hl.dex === 'xyz') ? 'xyz' : 'HL';
+    if (isBinance()) return 'Binance';
+    if (isMexc()) return 'MEXC';
     return 'Aster';
   }
   function updateTabTitle() {
@@ -549,6 +582,26 @@
       if (!(cap > 0)) return { available: true, uncapped: true };
       return { available: true, uncapped: false, cap: cap, maxMargin: maxMarginOf(cap, lev) };
     }
+    if (isBinance()) {
+      const rows = binanceBrackets[currentCoin().id];
+      if (!Array.isArray(rows) || !rows.length) return { available: false };
+      const br = rows.find((r) => lev >= r.min && lev <= r.max);
+      if (!br || !(br.cap > 0)) return { available: false };
+      return { available: true, uncapped: false, cap: br.cap, maxMargin: maxMarginOf(br.cap, lev), mmr: br.mmr, cum: br.cum };
+    }
+    if (isMexc()) {
+      const spec = coinSpec();
+      if (!spec) return { available: false };
+      const px = plannedEntry() || displayPx(state.coin);
+      const tiers = mexcTiers[currentCoin().id] || spec.tiers || [];
+      const list = tiers.length ? tiers : (spec.maxVol > 0 ? [{ maxVol: spec.maxVol, mmr: spec.mmr, maxLeverage: spec.max }] : []);
+      if (!list.length || !(px > 0) || !(spec.contractSize > 0)) return { available: false };
+      const hit = list.filter((t) => lev <= (t.maxLeverage || spec.max)).sort((a, b) => (a.maxLeverage || 0) - (b.maxLeverage || 0))[0];
+      if (!hit) return { available: false };
+      const cap = hit.maxVol * spec.contractSize * px;
+      if (!(cap > 0)) return { available: false };
+      return { available: true, uncapped: false, cap: cap, maxMargin: maxMarginOf(cap, lev), mmr: hit.mmr };
+    }
     const rows = asterBrackets[currentCoin().id];
     if (!Array.isArray(rows) || !rows.length) return { available: false };
     const br = rows.find((r) => lev >= r.min && lev <= r.max);
@@ -592,7 +645,33 @@
   function qty() {
     const e = plannedEntry();
     if (!(e > 0)) return 0;
-    return (state.margin * state.lev) / e;
+    return roundQty((state.margin * state.lev) / e);
+  }
+  function qtyStep() {
+    const s = coinSpec() || {};
+    if (isMexc() && s.contractSize > 0) return s.contractSize * (s.volUnit > 0 ? s.volUnit : 1);
+    if (s.step > 0) return s.step;
+    return 0;
+  }
+  function minQty() {
+    const s = coinSpec() || {};
+    if (isMexc() && s.contractSize > 0) return (s.minVol > 0 ? s.minVol : 1) * s.contractSize;
+    if (s.minQty > 0) return s.minQty;
+    return 0;
+  }
+  function roundQty(q) {
+    if (!(q > 0)) return 0;
+    const step = qtyStep();
+    if (step > 0) q = Math.floor(q / step + 1e-12) * step;
+    const min = minQty();
+    if (min > 0 && q + 1e-12 < min) return 0;
+    const s = coinSpec() || {};
+    if (s.maxQty > 0 && q > s.maxQty) q = s.maxQty;
+    if (isBinance() && s.minNotional > 0) {
+      const e = plannedEntry();
+      if (e > 0 && q * e < s.minNotional) return 0;
+    }
+    return q;
   }
   function positionNotional() { return state.margin * state.lev; }
   function pnlAt(exit) {
@@ -605,8 +684,15 @@
     return state.side === 'long' ? e + target / q : e - target / q;
   }
   function exitFromRoi(roiPct) { return exitFromPnl(state.margin * (roiPct / 100)); }
+  function effectiveFeePct() {
+    if (isMexc()) {
+      const s = coinSpec() || {};
+      if (s.taker != null && isFinite(s.taker)) return Math.max(0, s.taker * 100);
+    }
+    return Math.max(0, state.feePct);
+  }
   function feesAt(exit) {
-    const rate = Math.max(0, state.feePct) / 100;
+    const rate = effectiveFeePct() / 100;
     const open = positionNotional() * rate;
     const close = qty() * exit * rate;
     return { open, close, total: open + close };
@@ -614,18 +700,51 @@
   function mmr() {
     const maxL = levMax() || 40;
     if (isHl()) return 1 / (2 * maxL);
+    const lim = sizeLimit();
+    if ((isBinance() || isMexc()) && lim && lim.mmr > 0) return lim.mmr;
     const cap = Math.max(0.0001, 1 / maxL - 0.0005);
     return Math.min(BASE_MMR, cap);
   }
-  function liqPriceOf(side, entry, lev, maxL, plat) {
+  function liqPriceOf(side, entry, lev, maxL, plat, qtyArg) {
     if (!(entry > 0) || !(lev >= 1)) return NaN;
-    const hl = plat === 'hyperliquid';
-    const m = hl ? 1 / (2 * (maxL || lev)) : Math.min(BASE_MMR, Math.max(0.0001, 1 / (maxL || lev) - 0.0005));
+    const p = plat || state.platform;
+    if (p === 'binance' || p === 'mexc') {
+      const q = qtyArg > 0 ? qtyArg : qty();
+      const notional = (q > 0 ? q : (state.margin * lev / entry)) * entry;
+      let m = 0, cum = 0;
+      if (p === 'binance') {
+        const rows = binanceBrackets[state.coin] || [];
+        const br = rows.find((r) => notional <= r.cap) || rows[rows.length - 1] || rows.find((r) => lev >= r.min && lev <= r.max);
+        if (br) { m = br.mmr || 0; cum = br.cum || 0; }
+      } else {
+        const spec = coinSpec(currentCoin(), 'mexc') || {};
+        const tiers = mexcTiers[state.coin] || spec.tiers || [];
+        const vol = (spec.contractSize > 0 && q > 0) ? (q / spec.contractSize) : 0;
+        let hit = null;
+        (tiers.length ? tiers : []).forEach((t) => {
+          if (vol <= t.maxVol && (!hit || t.maxVol < hit.maxVol)) hit = t;
+        });
+        if (!hit && spec.mmr > 0) hit = { mmr: spec.mmr };
+        m = (hit && hit.mmr) || 0;
+      }
+      if (!(m > 0)) m = 1 / (maxL || lev);
+      const margin = (q > 0 ? q * entry : notional) / lev;
+      const qq = q > 0 ? q : (notional / entry);
+      if (!(qq > 0)) return NaN;
+      if (side === 'long') {
+        const den = qq * (1 - m);
+        return den > 0 ? (qq * entry - margin + cum) / den : NaN;
+      }
+      const den = qq * (1 + m);
+      return den > 0 ? (margin + qq * entry - cum) / den : NaN;
+    }
+    const hl = p === 'hyperliquid';
+    const mm = hl ? 1 / (2 * (maxL || lev)) : Math.min(BASE_MMR, Math.max(0.0001, 1 / (maxL || lev) - 0.0005));
     if (side === 'long') {
-      const k = 1 - 1 / lev + m;
+      const k = 1 - 1 / lev + mm;
       return (k > 0 && k < 1) ? entry * k : NaN;
     }
-    const k = 1 + 1 / lev - m;
+    const k = 1 + 1 / lev - mm;
     return (k > 1) ? entry * k : NaN;
   }
   function liqPrice() { return liqPriceOf(state.side, plannedEntry(), state.lev, levMax(), state.platform); }
@@ -696,7 +815,7 @@
       if (raw) {
         const o = JSON.parse(raw);
         if (COIN_BY_ID[o.coin]) state.coin = o.coin;
-        if (o.platform === 'aster' || o.platform === 'hyperliquid') state.platform = o.platform;
+        if (PLATFORMS.indexOf(o.platform) >= 0) state.platform = o.platform;
         if (o.side === 'long' || o.side === 'short') state.side = o.side;
         if (o.margin > 0) state.margin = +o.margin;
         if (o.lev >= 1) state.lev = +o.lev;
@@ -943,6 +1062,24 @@
       } catch (e) { /* */ }
       return null;
     }
+    if (isBinance()) {
+      if (!c.binance || !c.binance.symbol) return null;
+      const got = await fetchBinancePrice(c.binance.symbol);
+      if (got) {
+        setMeta(c.id, got);
+        if (got.trade > 0) return got.trade;
+      }
+      return null;
+    }
+    if (isMexc()) {
+      if (!c.mexc || !c.mexc.symbol) return null;
+      const got = await fetchMexcPrice(c.mexc.symbol);
+      if (got) {
+        setMeta(c.id, got);
+        if (got.trade > 0) return got.trade;
+      }
+      return null;
+    }
     if (!c.aster || !c.aster.symbol) return null;
     const got = await fetchAsterPrice(c.aster.symbol);
     if (got) {
@@ -984,7 +1121,16 @@
   async function refreshDayChange() {
     try {
       if (isHl()) await fetchHlMap(true);
-      else await Promise.all([
+      else if (isBinance()) {
+        const c = currentCoin();
+        if (c.binance && c.binance.symbol) await refreshBinanceStats(c.binance.symbol, c.id).catch(function () {});
+      } else if (isMexc()) {
+        const c = currentCoin();
+        if (c.mexc && c.mexc.symbol) {
+          const got = await fetchMexcPrice(c.mexc.symbol);
+          if (got) setMeta(c.id, got);
+        }
+      } else await Promise.all([
         refreshAsterDayChange().catch(function () {}),
         fetchHlMap(false).catch(function () {}),
         currentCoin().aster && currentCoin().aster.symbol
@@ -1059,20 +1205,22 @@
     clearCrosshair();
     resetOrderBook();
     state.lev = clampLev(state.lev);
+    if (isMexc()) state.feePct = effectiveFeePct();
     clampMarginToLimit({ flash: false });
     saveCalc();
     setView('asset');
     renderAll();
     refreshPrice({ fillEntry: true, quiet: true });
-    if (coin.aster && coin.aster.symbol && !isHl()) refreshAsterOi(coin.aster.symbol, coin.id).catch(function () {});
+    if (coin.aster && coin.aster.symbol && state.platform === 'aster') refreshAsterOi(coin.aster.symbol, coin.id).catch(function () {});
+    if (isBinance() && coin.binance && coin.binance.symbol) refreshBinanceStats(coin.binance.symbol, coin.id).catch(function () {});
     loadChart();
   }
 
   function setPlatform(id) {
-    if (id !== 'aster' && id !== 'hyperliquid') return;
+    if (PLATFORMS.indexOf(id) < 0) return;
     if (state.platform === id) return;
     state.platform = id;
-    state.feePct = state.fees[id];
+    state.feePct = (id === 'mexc') ? effectiveFeePct() : (state.fees[id] != null ? state.fees[id] : FEE_DEFAULTS[id]);
     if (!coinAvailable(currentCoin())) {
       const first = COINS.find((c) => coinAvailable(c));
       if (first) state.coin = first.id;
@@ -1109,7 +1257,7 @@
     const liq = liqPrice();
     const tpPx = state.tp == null ? null : exitFromRoi(state.tp);
     const slPx = state.sl == null ? null : exitFromRoi(state.sl);
-    const rate = Math.max(0, state.feePct) / 100;
+    const rate = effectiveFeePct() / 100;
     const rec = {
       id: nextId('P'),
       coin: c.id,
@@ -1472,7 +1620,8 @@
     const start = end - Math.max((TF_MS[tf] || 60e3) * 240, 30 * 60e3);
     let recent = [];
     try {
-      if (useAsterChart(c)) recent = await fetchAsterKlines(c.aster.symbol, tf, end, 500);
+      if (useBinanceChart(c)) recent = await fetchBinanceKlines(c.binance.symbol, tf, end, 500);
+      else if (useAsterChart(c)) recent = await fetchAsterKlines(c.aster.symbol, tf, end, 500);
       else recent = await fetchHlKlines(c.hl && c.hl.coin, tf, start, end);
     } catch (e) { return; }
     recent = normalizeBars(recent, tf);
@@ -1541,9 +1690,13 @@
     const end = Date.now();
     const want = end - (TF_INIT_MS[state.tf] || 7 * 86400e3);
     try {
-      if (useAsterChart(c)) bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
+      if (useBinanceChart(c)) bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
+        return fetchBinanceKlines(c.binance.symbol, state.tf, endMs, 1500);
+      });
+      else if (useAsterChart(c)) bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
         return fetchAsterKlines(c.aster.symbol, state.tf, endMs, ASTER_KLINE_LIMIT);
       });
+      else if (isMexc()) { bars = []; throw new Error('mexc-cors'); }
       else bars = await fetchCandlePages(state.tf, want, end, function (startMs, endMs) {
         return fetchHlKlines(c.hl && c.hl.coin, state.tf, startMs, endMs);
       });
@@ -1570,7 +1723,7 @@
       if (gen !== histGen) return;
       bars = [];
       try { series.setData([]); } catch (err) { /* */ }
-      host.insertAdjacentHTML('beforeend', '<div class="chart-empty">No candles from ' + (useAsterChart(c) ? 'Aster' : 'Hyperliquid') + '</div>');
+      host.insertAdjacentHTML('beforeend', '<div class="chart-empty">' + chartEmptyMsg(c, e) + '</div>');
     }
     subscribeLive();
     renderOverlay();
@@ -1608,7 +1761,8 @@
     const c = currentCoin();
     let more = [];
     try {
-      if (useAsterChart(c)) more = await fetchAsterKlines(c.aster.symbol, tf, endMs, ASTER_KLINE_LIMIT);
+      if (useBinanceChart(c)) more = await fetchBinanceKlines(c.binance.symbol, tf, endMs, 1500);
+      else if (useAsterChart(c)) more = await fetchAsterKlines(c.aster.symbol, tf, endMs, ASTER_KLINE_LIMIT);
       else more = await fetchHlKlines(c.hl && c.hl.coin, tf, endMs - (TF_MS[tf] || 60e3) * HL_CANDLE_CAP, endMs);
     } catch (e) { more = []; }
     if (gen !== histGen) { histLoading = false; return; }
@@ -2094,9 +2248,147 @@
     ).join('');
   }
 
+  function limitsSourceNote() {
+    if (!isBinance() && !isMexc()) return '';
+    if (venueLimitsLive[state.platform]) return '';
+    if (!venueLimitsAt) return '';
+    try {
+      const d = tzFormatter({ day: 'numeric', month: 'short' }).format(new Date(venueLimitsAt));
+      return ' · cached ' + d;
+    } catch (e) { return ' · cached'; }
+  }
+  function applyVenueSnapshot(snap) {
+    snap = snap || (typeof window !== 'undefined' && window.TDVenueSnapshot) || null;
+    if (!snap) return;
+    if (snap.at) venueLimitsAt = snap.at;
+    const fb = snap.fallback || {};
+    function attach(plat, rows, field) {
+      if (!rows) return;
+      Object.keys(rows).forEach(function (id) {
+        const c = COIN_BY_ID[id];
+        if (!c) return;
+        const src = rows[id];
+        const prev = c[field] || {};
+        const fallback = prev.fallback || fb[id] || prev.fallback;
+        c[field] = Object.assign({}, prev, src, { fallback: fallback });
+      });
+    }
+    attach('binance', snap.binance, 'binance');
+    attach('mexc', snap.mexc, 'mexc');
+    if (snap.binance) {
+      Object.keys(snap.binance).forEach(function (id) {
+        const br = snap.binance[id] && snap.binance[id].brackets;
+        if (br && br.length) binanceBrackets[id] = br;
+      });
+    }
+    if (snap.mexc) {
+      Object.keys(snap.mexc).forEach(function (id) {
+        const t = snap.mexc[id] && snap.mexc[id].tiers;
+        mexcTiers[id] = t && t.length ? t : [];
+      });
+    }
+  }
+  async function refreshVenueLimits() {
+    await Promise.all([refreshBinanceLimits(), refreshMexcLimits()]);
+    state.lev = clampLev(state.lev);
+    clampMarginToLimit({ flash: false });
+    if (isMexc()) state.feePct = effectiveFeePct();
+    renderOrder();
+  }
+  async function refreshBinanceLimits() {
+    /* Brackets endpoint is the official UI API; it often has no CORS. exchangeInfo is CORS-open on www.binance.com. */
+    try {
+      const r = await fetch(BINANCE_API + '/exchangeInfo', { cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        const list = j && j.symbols;
+        if (Array.isArray(list)) {
+          const by = {};
+          list.forEach(function (s) { if (s && s.symbol) by[s.symbol] = s; });
+          COINS.forEach(function (c) {
+            const spec = c.binance;
+            const s = spec && by[spec.symbol];
+            if (!s || s.status !== 'TRADING') return;
+            const fl = {};
+            (s.filters || []).forEach(function (f) { fl[f.filterType] = f; });
+            const lot = fl.LOT_SIZE || {}, mkt = fl.MARKET_LOT_SIZE || {}, px = fl.PRICE_FILTER || {}, mn = fl.MIN_NOTIONAL || {};
+            c.binance = Object.assign({}, spec, {
+              tick: parseFloat(px.tickSize) || spec.tick,
+              step: parseFloat(lot.stepSize) || spec.step,
+              minQty: parseFloat(lot.minQty) || spec.minQty,
+              maxQty: parseFloat((mkt.maxQty != null ? mkt.maxQty : lot.maxQty)) || spec.maxQty,
+              minNotional: parseFloat(mn.notional || mn.minNotional) || spec.minNotional
+            });
+          });
+        }
+      }
+    } catch (e) { /* keep snapshot filters */ }
+    try {
+      const r = await fetch(BINANCE_BRACKET_URL, { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const list = j && j.data && j.data.brackets;
+      if (!Array.isArray(list)) return;
+      const by = {};
+      list.forEach(function (item) { by[item.symbol] = item.riskBrackets || []; });
+      COINS.forEach(function (c) {
+        const rows = c.binance && by[c.binance.symbol];
+        if (!rows || !rows.length) return;
+        binanceBrackets[c.id] = rows.map(function (row) {
+          return {
+            min: row.minOpenPosLeverage,
+            max: row.maxOpenPosLeverage,
+            cap: Number(row.bracketNotionalCap),
+            mmr: Number(row.bracketMaintenanceMarginRate),
+            cum: Number(row.cumFastMaintenanceAmount || 0)
+          };
+        });
+        const mx = Math.max.apply(null, binanceBrackets[c.id].map(function (b) { return b.max; }));
+        if (mx > 0) c.binance.max = mx;
+      });
+      venueLimitsLive.binance = true;
+    } catch (e) { /* CORS — keep official snapshot */ }
+  }
+  async function refreshMexcLimits() {
+    try {
+      const r = await fetch(MEXC_API + '/contract/detail', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const list = j && j.data;
+      if (!Array.isArray(list)) return;
+      const by = {};
+      list.forEach(function (item) { if (item && item.symbol) by[item.symbol] = item; });
+      COINS.forEach(function (c) {
+        const spec = c.mexc;
+        const it = spec && by[spec.symbol];
+        if (!it) return;
+        const tiers = (it.riskLimitCustom || []).map(function (t) {
+          return { maxVol: +t.maxVol, mmr: +t.mmr, imr: +t.imr || 0, maxLeverage: +t.maxLeverage };
+        });
+        c.mexc = Object.assign({}, spec, {
+          max: +it.maxLeverage || spec.max,
+          contractSize: +it.contractSize || spec.contractSize,
+          minVol: +it.minVol || spec.minVol,
+          maxVol: +it.maxVol || spec.maxVol,
+          priceUnit: +it.priceUnit || spec.priceUnit,
+          volUnit: +it.volUnit || spec.volUnit,
+          taker: it.takerFeeRate != null ? +it.takerFeeRate : spec.taker,
+          maker: it.makerFeeRate != null ? +it.makerFeeRate : spec.maker,
+          mmr: +it.maintenanceMarginRate || spec.mmr,
+          tiers: tiers
+        });
+        mexcTiers[c.id] = tiers;
+      });
+      venueLimitsLive.mexc = true;
+    } catch (e) { /* CORS — keep official snapshot */ }
+  }
+
   function renderPlatform() {
-    if ($('btnAster')) $('btnAster').classList.toggle('on', !isHl());
+
+    if ($('btnAster')) $('btnAster').classList.toggle('on', state.platform === 'aster');
     if ($('btnHl')) $('btnHl').classList.toggle('on', isHl());
+    if ($('btnBinance')) $('btnBinance').classList.toggle('on', isBinance());
+    if ($('btnMexc')) $('btnMexc').classList.toggle('on', isMexc());
   }
 
   function renderOrder() {
@@ -2140,7 +2432,7 @@
       line.classList.remove('warn');
       if (!lim.available) line.textContent = '';
       else if (lim.uncapped) line.textContent = 'No extra margin cap at ' + state.lev + 'x';
-      else line.textContent = 'Max position at ' + state.lev + 'x: ' + fmtCap(lim.cap) + ' (max margin ' + fmtMaxMargin(lim.maxMargin) + ')';
+      else line.textContent = 'Max position at ' + state.lev + 'x: ' + fmtCap(lim.cap) + ' (max margin ' + fmtMaxMargin(lim.maxMargin) + ')' + limitsSourceNote();
     }
     const liq = liqPrice();
     if ($('estLiq')) $('estLiq').textContent = isFinite(liq) ? fmtPrice(liq, true) : '—';
@@ -2342,8 +2634,10 @@
         renderMarkets();
       });
     });
-    $('btnAster').onclick = () => setPlatform('aster');
-    $('btnHl').onclick = () => setPlatform('hyperliquid');
+    if ($('btnAster')) $('btnAster').onclick = () => setPlatform('aster');
+    if ($('btnHl')) $('btnHl').onclick = () => setPlatform('hyperliquid');
+    if ($('btnBinance')) $('btnBinance').onclick = () => setPlatform('binance');
+    if ($('btnMexc')) $('btnMexc').onclick = () => setPlatform('mexc');
     $('btnBack').onclick = () => { setView('markets'); };
     $('btnLong').onclick = () => openOrder('long');
     $('btnShort').onclick = () => openOrder('short');
@@ -2674,9 +2968,293 @@
   }
 
 
+  async function fetchBinancePrice(symbol) {
+    if (!symbol) return null;
+    try {
+      const r = await fetch(BINANCE_API + '/premiumIndex?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const mark = parseFloat(j.markPrice), indexPx = parseFloat(j.indexPrice);
+      const trade = mark > 0 ? mark : indexPx;
+      const extra = {};
+      if (mark > 0) extra.mark = mark;
+      if (indexPx > 0) extra.index = indexPx;
+      if (trade > 0) { extra.trade = trade; extra.px = trade; }
+      const nft = parseFloat(j.nextFundingTime);
+      const fund = parseFloat(j.lastFundingRate);
+      if (nft > 0) extra.nextFunding = nft;
+      if (isFinite(fund)) extra.funding = fund;
+      return extra;
+    } catch (e) { return null; }
+  }
+  async function refreshBinanceStats(symbol, id) {
+    if (!symbol) return;
+    try {
+      const [oiR, hrR] = await Promise.all([
+        fetch(BINANCE_API + '/openInterest?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' }),
+        fetch(BINANCE_API + '/ticker/24hr?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' })
+      ]);
+      const extra = {};
+      if (oiR && oiR.ok) {
+        const j = await oiR.json();
+        const oi = parseFloat(j.openInterest);
+        if (oi > 0) extra.oi = oi;
+      }
+      if (hrR && hrR.ok) {
+        const j = await hrR.json();
+        const vol = parseFloat(j.quoteVolume);
+        const prev = parseFloat(j.prevClosePrice || j.openPrice);
+        const last = parseFloat(j.lastPrice);
+        if (vol > 0) extra.volume = vol;
+        if (prev > 0 && last > 0) dayChange[id || state.coin] = ((last / prev) - 1) * 100;
+      }
+      if (Object.keys(extra).length) setMeta(id || state.coin, extra);
+    } catch (e) { /* */ }
+  }
+  async function fetchMexcPrice(symbol) {
+    if (!symbol) return null;
+    try {
+      const r = await fetch(MEXC_API + '/contract/ticker?symbol=' + encodeURIComponent(symbol), { cache: 'no-store' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const d = (j && j.data) || j;
+      const row = Array.isArray(d) ? d[0] : d;
+      if (!row) return null;
+      const last = parseFloat(row.lastPrice || row.last);
+      const fair = parseFloat(row.fairPrice || row.fair);
+      const indexPx = parseFloat(row.indexPrice || row.index);
+      const extra = {};
+      if (fair > 0) extra.mark = fair;
+      if (indexPx > 0) extra.index = indexPx;
+      if (last > 0) { extra.trade = last; extra.px = last; }
+      else if (fair > 0) { extra.trade = fair; extra.px = fair; }
+      const fund = parseFloat(row.fundingRate);
+      const nft = parseFloat(row.nextSettleTime || row.timestamp);
+      if (isFinite(fund)) extra.funding = fund;
+      if (nft > 0) extra.nextFunding = nft;
+      const vol = parseFloat(row.amount24 || row.volume24);
+      if (vol > 0) extra.volume = vol;
+      return extra;
+    } catch (e) { return null; }
+  }
+  async function fetchBinanceKlines(symbol, tf, endMs, limit) {
+    const interval = tf === '1d' ? '1d' : tf;
+    let url = BINANCE_API + '/klines?symbol=' + encodeURIComponent(symbol) + '&interval=' + interval + '&limit=' + (limit || 1500);
+    if (endMs) url += '&endTime=' + Math.floor(endMs);
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('klines ' + r.status);
+    const raw = await r.json();
+    const list = (Array.isArray(raw) ? raw : []).map((row) => ({
+      time: toUnixSec(row[0]), open: +row[1], high: +row[2], low: +row[3], close: +row[4],
+      vol: +row[5] || 0, quote: +row[7] || 0
+    }));
+    return normalizeBars(list, tf);
+  }
+
+  let binancePollTimer = 0, mexcPingTimer = 0;
+  function stopBinancePoll() {
+    if (binancePollTimer) { clearInterval(binancePollTimer); binancePollTimer = 0; }
+  }
+  function startBinancePoll() {
+    stopBinancePoll();
+    const tick = async function () {
+      if (!isBinance()) { stopBinancePoll(); return; }
+      const c = currentCoin();
+      const sym = c.binance && c.binance.symbol;
+      if (!sym) return;
+      const got = await fetchBinancePrice(sym);
+      if (got) {
+        setMeta(c.id, got);
+        const px = got.trade || got.mark;
+        if (px > 0) applyTradeTick(px, 'binance');
+        renderAssetHead();
+      }
+    };
+    tick();
+    binancePollTimer = setInterval(tick, 1500);
+  }
+  function openBinanceWs() {
+    const c = currentCoin();
+    const sym = (c.binance && c.binance.symbol || '').toLowerCase();
+    if (!sym) return;
+    const tf = state.tf === '1d' ? '1d' : state.tf;
+    const streams = '!markPrice@arr@1s/' + sym + '@markPrice@1s/' + sym + '@aggTrade/' + sym + '@kline_' + tf + '/' + sym + '@depth20@100ms';
+    const url = BINANCE_WS + '?streams=' + streams;
+    wsKind = 'binance';
+    try {
+      ws = new WebSocket(url);
+      ws.onopen = function () { wsRetry = 0; stopBinancePoll(); };
+      ws.onmessage = function (ev) {
+        try { handleBinanceMessage(JSON.parse(ev.data)); } catch (e) { /* */ }
+      };
+      ws.onclose = function () {
+        if (wsKind === 'binance') {
+          ws = null;
+          startBinancePoll();
+          wsBackoff();
+        }
+      };
+      ws.onerror = function () { try { ws.close(); } catch (e) { /* */ } };
+    } catch (e) {
+      ws = null;
+      startBinancePoll();
+      wsBackoff();
+    }
+  }
+  function handleBinanceMessage(msg) {
+    if (!isBinance()) return;
+    const d = msg.data || msg;
+    if (!d) return;
+    if (Array.isArray(d)) {
+      d.forEach(function (row) {
+        if (!row || !row.s) return;
+        const px = parseFloat(row.p);
+        if (!(px > 0)) return;
+        const coin = COINS.find((c) => c.binance && c.binance.symbol === row.s);
+        if (!coin) return;
+        const extra = { mark: px };
+        const fund = parseFloat(row.r);
+        const indexPx = parseFloat(row.i);
+        const nft = parseFloat(row.T);
+        if (isFinite(fund)) extra.funding = fund;
+        if (indexPx > 0) extra.index = indexPx;
+        if (nft > 0) extra.nextFunding = nft;
+        setMeta(coin.id, extra);
+        if (coin.id === state.coin) renderAssetHead();
+      });
+      return;
+    }
+    const type = d.e;
+    if (d.s && !sameBinanceSym(d.s)) return;
+    if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade' && type !== 'depthUpdate')) {
+      const px = parseFloat(d.p || d.markPrice);
+      const extra = {};
+      const fund = parseFloat(d.r);
+      const indexPx = parseFloat(d.i);
+      const nft = parseFloat(d.T);
+      if (isFinite(fund)) extra.funding = fund;
+      if (indexPx > 0) extra.index = indexPx;
+      if (nft > 0) extra.nextFunding = nft;
+      if (px > 0) extra.mark = px;
+      setMeta(state.coin, extra);
+      renderAssetHead();
+    }
+    if (type === 'aggTrade') {
+      const px = parseFloat(d.p);
+      const sz = parseFloat(d.q);
+      if (px > 0) applyTradeTick(px, 'binance');
+      if (px > 0 && sz > 0) pushTape(px, sz, d.m ? 'sell' : 'buy', d.T);
+    }
+    if (type === 'kline' && d.k) {
+      if (d.k.s && !sameBinanceSym(d.k.s)) return;
+      const k = d.k;
+      const bar = normalizeBars([{ time: toUnixSec(k.t), open: +k.o, high: +k.h, low: +k.l, close: +k.c, vol: +k.v || 0, quote: +k.q || 0 }], state.tf)[0];
+      if (bar) {
+        applyOfficialBar(bar);
+        applyTradeTick(bar.close, 'binance');
+      }
+    }
+    if (type === 'depthUpdate' || d.b || d.a || d.bids || d.asks) {
+      applyL2FromAster(d);
+    }
+  }
+  function openMexcWs() {
+    const c = currentCoin();
+    const sym = c.mexc && c.mexc.symbol;
+    if (!sym) return;
+    wsKind = 'mexc';
+    try {
+      ws = new WebSocket(MEXC_WS);
+      ws.onopen = function () {
+        wsRetry = 0;
+        const send = function (obj) { try { ws.send(JSON.stringify(obj)); } catch (e) { /* */ } };
+        send({ method: 'sub.ticker', param: { symbol: sym } });
+        send({ method: 'sub.deal', param: { symbol: sym } });
+        send({ method: 'sub.depth', param: { symbol: sym } });
+        if (mexcPingTimer) clearInterval(mexcPingTimer);
+        mexcPingTimer = setInterval(function () {
+          if (ws && ws.readyState === 1 && wsKind === 'mexc') send({ method: 'ping' });
+        }, 15000);
+      };
+      ws.onmessage = function (ev) {
+        try { handleMexcMessage(JSON.parse(ev.data), sym); } catch (e) { /* */ }
+      };
+      ws.onclose = function () {
+        if (mexcPingTimer) { clearInterval(mexcPingTimer); mexcPingTimer = 0; }
+        if (wsKind === 'mexc') { ws = null; wsBackoff(); }
+      };
+      ws.onerror = function () { try { ws.close(); } catch (e) { /* */ } };
+    } catch (e) { ws = null; wsBackoff(); }
+  }
+  function handleMexcMessage(msg, sym) {
+    if (!isMexc() || !msg) return;
+    const ch = msg.channel || msg.method || '';
+    const d = msg.data || msg;
+    if (ch.indexOf('ticker') >= 0 || (d && (d.lastPrice || d.fairPrice) && d.symbol)) {
+      if (d.symbol && !sameMexcSym(d.symbol)) return;
+      const last = parseFloat(d.lastPrice || d.last);
+      const fair = parseFloat(d.fairPrice || d.fair);
+      const indexPx = parseFloat(d.indexPrice);
+      const extra = {};
+      if (fair > 0) extra.mark = fair;
+      if (indexPx > 0) extra.index = indexPx;
+      if (last > 0) { extra.trade = last; extra.px = last; }
+      const fund = parseFloat(d.fundingRate);
+      const nft = parseFloat(d.nextSettleTime);
+      if (isFinite(fund)) extra.funding = fund;
+      if (nft > 0) extra.nextFunding = nft;
+      const vol = parseFloat(d.amount24 || d.volume24);
+      if (vol > 0) extra.volume = vol;
+      setMeta(state.coin, extra);
+      if (last > 0) applyTradeTick(last, 'mexc');
+      else if (fair > 0) { /* mark only */ renderAssetHead(); }
+      else renderAssetHead();
+      return;
+    }
+    if (ch.indexOf('deal') >= 0) {
+      const list = Array.isArray(d) ? d : (d && d.deals) || (d ? [d] : []);
+      list.forEach(function (t) {
+        const px = parseFloat(t.p || t.price);
+        const sz = parseFloat(t.v || t.volume || t.q);
+        const side = (t.T === 1 || t.side === 1 || t.side === 'buy') ? 'buy' : 'sell';
+        if (px > 0) applyTradeTick(px, 'mexc');
+        if (px > 0 && sz > 0) pushTape(px, sz, side, t.t || Date.now());
+      });
+      return;
+    }
+    if (ch.indexOf('depth') >= 0) {
+      const bids = d.bids || d.asks && d.bids;
+      applyL2FromMexc(d);
+    }
+  }
+  function applyL2FromMexc(d) {
+    if (!d) return;
+    const bids = (d.bids || d.b || []).map(function (x) {
+      return Array.isArray(x) ? { px: +x[0], sz: +x[1] } : { px: +(x.p || x.price), sz: +(x.v || x.q || x.vol) };
+    }).filter(function (x) { return x.px > 0 && x.sz > 0; });
+    const asks = (d.asks || d.a || []).map(function (x) {
+      return Array.isArray(x) ? { px: +x[0], sz: +x[1] } : { px: +(x.p || x.price), sz: +(x.v || x.q || x.vol) };
+    }).filter(function (x) { return x.px > 0 && x.sz > 0; });
+    if (!bids.length && !asks.length) return;
+    /* reuse the same book renderer as Aster if it expects {b,a} arrays */
+    applyL2FromAster({ b: (d.bids || d.b || []), a: (d.asks || d.a || []) });
+  }
+
   function useAsterChart(c) {
+
     c = c || currentCoin();
-    return !isHl() && !!(c && c.aster && c.aster.symbol);
+    return state.platform === 'aster' && !!(c && c.aster && c.aster.symbol);
+  }
+  function useBinanceChart(c) {
+    c = c || currentCoin();
+    return state.platform === 'binance' && !!(c && c.binance && c.binance.symbol);
+  }
+  function useMexcChart() { return false; }
+  function chartEmptyMsg(c, err) {
+    if (isMexc()) return 'MEXC charts are unavailable in the browser — their API blocks CORS. Leverage and limits still come from MEXC\'s public contract data.';
+    if (useBinanceChart(c)) return 'No candles from Binance';
+    if (useAsterChart(c)) return 'No candles from Aster';
+    return 'No candles from Hyperliquid';
   }
   function wsIsLive() {
     return !!(ws && ws.readyState === 1 && lastTickAt && (Date.now() - lastTickAt) < 5000);
@@ -2685,7 +3263,7 @@
     const el = $('liveSrc');
     const lbl = $('liveSrcLbl');
     if (!el || !lbl) return;
-    const src = useAsterChart() ? 'Aster' : 'HL';
+    const src = isBinance() ? 'Binance' : isMexc() ? 'MEXC' : useAsterChart() ? 'Aster' : 'HL';
     lbl.textContent = src;
     const age = lastTickAt ? (Date.now() - lastTickAt) : 1e9;
     const connected = !!(ws && ws.readyState === 1);
@@ -2715,6 +3293,8 @@
   }
 
   function closeLiveWs() {
+    stopBinancePoll();
+    if (mexcPingTimer) { clearInterval(mexcPingTimer); mexcPingTimer = 0; }
     if (ws) {
       try { ws.onclose = null; ws.onerror = null; ws.close(); } catch (e) { /* */ }
       ws = null;
@@ -2723,6 +3303,8 @@
 
   function liveWantKey() {
     const c = currentCoin();
+    if (useBinanceChart(c)) return 'binance:' + c.binance.symbol + ':' + state.tf;
+    if (isMexc() && c.mexc && c.mexc.symbol) return 'mexc:' + c.mexc.symbol + ':' + state.tf;
     if (useAsterChart(c)) return 'aster:' + c.aster.symbol + ':' + state.tf;
     return 'hl:' + ((c.hl && c.hl.coin) || '') + ':' + state.tf;
   }
@@ -2734,7 +3316,9 @@
     wsKey = key;
     wsCoin = key;
     wsTf = state.tf;
-    if (key.startsWith('aster:')) openAsterWs();
+    if (key.startsWith('binance:')) openBinanceWs();
+    else if (key.startsWith('mexc:')) openMexcWs();
+    else if (key.startsWith('aster:')) openAsterWs();
     else openHlWs();
   }
 
@@ -2892,7 +3476,7 @@
       return;
     }
     const type = d.e;
-    if (isHl()) return;
+    if (state.platform !== 'aster') return;
     if (d.s && !sameAsterSym(d.s)) return;
     if (type === 'markPriceUpdate' || (d.s && d.p && d.i && !d.k && !d.a && d.e !== 'aggTrade' && type !== 'depthUpdate')) {
       const px = parseFloat(d.p || d.markPrice);
@@ -2958,9 +3542,17 @@
   }
 
   function venueOk(src) {
-    if (src === 'aster') return !isHl();
-    if (src === 'hl') return isHl();
-    return true;
+    if (src === state.platform) return true;
+    if (src === 'hl' && isHl()) return true;
+    return false;
+  }
+  function sameBinanceSym(s) {
+    const cur = currentCoin();
+    return !!(s && cur.binance && String(s).toUpperCase() === String(cur.binance.symbol).toUpperCase());
+  }
+  function sameMexcSym(s) {
+    const cur = currentCoin();
+    return !!(s && cur.mexc && String(s).toUpperCase() === String(cur.mexc.symbol).toUpperCase());
   }
   function sameAsterSym(s) {
     const cur = currentCoin();
@@ -2986,7 +3578,7 @@
       if (extra.mark > 0 || px > 0) setMeta(state.coin, Object.assign({}, extra, extra.mark ? {} : {}));
       return;
     }
-    applyTradeTick(px, isHl() ? 'hl' : 'aster');
+    applyTradeTick(px, state.platform === 'hyperliquid' ? 'hyperliquid' : state.platform);
   }
   function flushTick() {
     liveRaf = 0;
@@ -3189,7 +3781,11 @@
     SMCI: { blurb: 'Super Micro builds AI servers and racks. The stock often reacts first when AI hardware hype rises or fades.', more: ' This perpetual is listed on Hyperliquid’s xyz dex and is not on Aster yet.', web: 'https://www.supermicro.com' },
     SMH: { blurb: 'VanEck Semiconductor ETF (SMH) is a liquid way to trade the chip sector as a group.', more: ' It is the closest SOX/SOXX-style product on Hyperliquid. SOXL, a 3x bull ETF, is also listed. SOXX itself is not on Aster or Hyperliquid.', web: 'https://www.vaneck.com' },
     SP500: { blurb: 'This contract tracks the S&P 500, the main US large-cap equity index.', more: ' It trades on Hyperliquid as xyz:SP500 (index level, around seven thousand). Aster lists SPY and a meme coin called SPX, not this index, so the market appears only on Hyperliquid.', web: 'https://www.spglobal.com/spdji/en/indices/equity/sp-500/' },
-    XYZ100: { blurb: 'XYZ100 is TradeXYZ’s US 100 index: 100 large non-financial US-listed companies, weighted by modified market cap.', more: ' It trades on Hyperliquid’s xyz dex with up to 30× leverage. It is not a licensed Nasdaq-100 contract and is not listed on Aster.', web: 'https://trade.xyz' }
+    XYZ100: { blurb: 'XYZ100 is TradeXYZ’s US 100 index: 100 large non-financial US-listed companies, weighted by modified market cap.', more: ' It trades on Hyperliquid’s xyz dex with up to 30× leverage. On MEXC the closest contract is NAS100. It is not listed on Aster or Binance.', web: 'https://trade.xyz' },
+    ETH: { blurb: 'Ethereum is the largest smart-contract network, used for DeFi, stablecoins and most token issuance.', more: ' ETH-USDT perpetuals trade on Aster, Hyperliquid, Binance USDⓈ-M and MEXC.', web: 'https://ethereum.org' },
+    BNB: { blurb: 'BNB is the native token of the BNB Chain and is used for fees on Binance’s chain.', more: ' BNB-USDT perpetuals trade on Aster, Hyperliquid, Binance USDⓈ-M and MEXC.', web: 'https://www.bnbchain.org' },
+    QQQ: { blurb: 'Invesco QQQ tracks the Nasdaq-100, the main US large-cap technology index.', more: ' The QQQ perpetual is listed on Aster, Binance TradFi and MEXC. Hyperliquid lists TQQQ (3×) but not QQQ itself.', web: 'https://www.invesco.com' },
+    BRENTOIL: { blurb: 'Brent crude is the main international oil benchmark, distinct from WTI (CL).', more: ' This contract is xyz:BRENTOIL on Hyperliquid and OIL(BRENT) / UKOIL on MEXC. Aster and Binance list WTI (CL), not Brent, so those venues are hidden for this ticker.', web: 'https://www.eia.gov' }
   };
 
   function fundingApr(rate) {
@@ -3873,7 +4469,7 @@
   }
   function applyHandoff(p) {
     if (!p) return;
-    if (p.platform === 'aster' || p.platform === 'hyperliquid') {
+    if (PLATFORMS.indexOf(p.platform) >= 0) {
       state.platform = p.platform;
       state.feePct = state.fees[p.platform];
     }
@@ -3948,6 +4544,7 @@
   }
 
   async function init() {
+    applyVenueSnapshot();
     loadSaved();
     hookCloudSync();
     bind();
@@ -3956,6 +4553,7 @@
     renderAll();
     document.querySelectorAll('#filters [data-filter]').forEach((x) => x.classList.toggle('on', x.getAttribute('data-filter') === state.filter));
     refreshAsterBrackets();
+    refreshVenueLimits();
     await refreshDayChange();
     await refreshPrice({ fillEntry: !(state.entry > 0), quiet: true });
     window.addEventListener('message', onCalcMessage);

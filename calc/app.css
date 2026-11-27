@@ -91,6 +91,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .platforms, .filters { display: flex; gap: 8px; padding: 0 16px 10px; }
 .platforms { display: grid; grid-template-columns: 1fr 1fr; }
+.platforms button { font-size: 13px; }
 .platforms button, .filters button {
   height: 34px; border-radius: 999px; background: var(--card); color: var(--muted);
   font-weight: 700; font-size: 13px; padding: 0 12px;
